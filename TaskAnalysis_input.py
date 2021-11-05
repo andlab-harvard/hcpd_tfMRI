@@ -1,3 +1,11 @@
+#Usage: python <this script>
+#Input: None
+#Output: A list of subjects and task-run directories readable by HCP's TaskfMRIAnalysis/TaskfMRIAnalysis.sh
+#Details: This merely traverses the data in which we download the staged multirunfix data and inserts the correct
+# information if these directories exist for a specific user.
+#
+#To do: modify to allow other tasks.
+
 from os import walk, listdir, path
 from re import match
 import pandas as pd
@@ -8,7 +16,7 @@ def get_CARIT_dirs(id_dir, basedir):
     dirpostfix='MNINonLinear/Results'
     full_id_dir='/'.join([hcpdir,id_dir, dirpostfix])
     if path.isdir(full_id_dir):
-        carit_dirs='@'.join([carit for carit in listdir(full_id_dir) if match(r"tfMRI_CARIT", carit)])
+        carit_dirs='@'.join([carit for carit in listdir(full_id_dir) if match(r"tfMRI_CARIT_(AP|PA)", carit)])
     else:
         print("Warning, directory does not exist: " + full_id_dir)
         carit_dirs=''
