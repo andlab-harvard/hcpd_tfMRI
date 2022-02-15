@@ -1,0 +1,135 @@
+,logfile,n_errors,errors,F-test,dtseries,csv,scan,PID
+2,log/hcp1st-45075917_4.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD0383143
+17,log/hcp1st-45075917_37.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD0842250
+23,log/hcp1st-45075917_21.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD2400632
+27,log/hcp1st-45075917_26.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD0947365
+44,log/hcp1st-45075917_23.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD0921347
+68,log/hcp1st-45075917_62.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD0679770_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD0679770
+81,log/hcp1st-45075917_85.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD2156344/tfMRI_CARIT/tfMRI_HCD2156344_*.csv: No such file or directory
+",0,0,1,,HCD2156344
+82,log/hcp1st-45075917_86.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD1753559
+101,log/hcp1st-45075917_101.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1945164_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD1945164
+109,log/hcp1st-45075917_109.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD1600332/tfMRI_CARIT/tfMRI_HCD1600332_*.csv: No such file or directory
+",0,0,1,,HCD1600332
+128,log/hcp1st-45075917_128.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1857066_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD1857066
+157,log/hcp1st-45075917_157.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD2968080/tfMRI_CARIT/tfMRI_HCD2968080_*.csv: No such file or directory
+",0,0,1,,HCD2968080
+162,log/hcp1st-45075917_162.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD0022919/tfMRI_CARIT/tfMRI_HCD0022919_*.csv: No such file or directory
+",0,0,1,,HCD0022919
+170,log/hcp1st-45075917_167.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD0040113/tfMRI_CARIT/tfMRI_HCD0040113_*.csv: No such file or directory
+",0,0,1,,HCD0040113
+214,log/hcp1st-45075917_214.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD0185644
+219,log/hcp1st-45075917_219.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD0222018
+237,log/hcp1st-45075917_237.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD0286650
+241,log/hcp1st-45075917_241.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD0295954_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD0295954
+255,log/hcp1st-45075917_255.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD0367448
+281,log/hcp1st-45075917_281.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD0505838/tfMRI_CARIT/tfMRI_HCD0505838_*.csv: No such file or directory
+",0,0,1,,HCD0505838
+306,log/hcp1st-45075917_307.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD0619247
+320,log/hcp1st-45075917_320.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD0678970/tfMRI_CARIT/tfMRI_HCD0678970_*.csv: No such file or directory
+",0,0,1,,HCD0678970
+321,log/hcp1st-45075917_321.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD0684460
+327,log/hcp1st-45075917_327.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD0714443_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD0714443
+330,log/hcp1st-45075917_330.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD0719352_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD0719352
+345,log/hcp1st-45075917_345.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD0808654/tfMRI_CARIT/tfMRI_HCD0808654_*.csv: No such file or directory
+",0,0,1,,HCD0808654
+376,log/hcp1st-45075917_376.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD0943458
+377,log/hcp1st-45075917_378.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD0949874_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD0949874
+381,log/hcp1st-45075917_381.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD0957368_V1_MR/MNINonLinear/Results/tfMRI_CARIT_PA/tfMRI_CARIT_PA_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_PA,HCD0957368
+386,log/hcp1st-45075917_386.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD0980262_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD0980262
+393,log/hcp1st-45075917_393.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD1007423
+394,log/hcp1st-45075917_394.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD1010311/tfMRI_CARIT/tfMRI_HCD1010311_*.csv: No such file or directory
+",0,0,1,,HCD1010311
+398,log/hcp1st-45075917_398.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1022722_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD1022722
+419,log/hcp1st-45075917_419.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD1175343/tfMRI_CARIT/tfMRI_HCD1175343_*.csv: No such file or directory
+",0,0,1,,HCD1175343
+420,log/hcp1st-45075917_420.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD1181843/tfMRI_CARIT/tfMRI_HCD1181843_*.csv: No such file or directory
+",0,0,1,,HCD1181843
+422,log/hcp1st-45075917_422.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD1187653
+428,log/hcp1st-45075917_428.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD1209536
+436,log/hcp1st-45075917_436.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD1231832
+462,log/hcp1st-45075917_462.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD1375755
+463,log/hcp1st-45075917_463.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD1380849
+464,log/hcp1st-45075917_464.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1395458_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD1395458
+475,log/hcp1st-45075917_475.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1444142_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD1444142
+479,log/hcp1st-45075917_479.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD1464451/tfMRI_CARIT/tfMRI_HCD1464451_*.csv: No such file or directory
+",0,0,1,,HCD1464451
+485,log/hcp1st-45075917_485.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD1490048/tfMRI_CARIT/tfMRI_HCD1490048_*.csv: No such file or directory
+",0,0,1,,HCD1490048
+502,log/hcp1st-45075917_502.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD1546857
+511,log/hcp1st-45075917_511.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD1590860/tfMRI_CARIT/tfMRI_HCD1590860_*.csv: No such file or directory
+",0,0,1,,HCD1590860
+527,log/hcp1st-45075917_527.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1658565_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD1658565
+532,log/hcp1st-45075917_532.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD1681257
+542,log/hcp1st-45075917_542.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1734858_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD1734858
+560,log/hcp1st-45075917_560.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD1787677/tfMRI_CARIT/tfMRI_HCD1787677_*.csv: No such file or directory
+",0,0,1,,HCD1787677
+565,log/hcp1st-45075917_565.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1798985_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD1798985
+571,log/hcp1st-45075917_571.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD1840251/tfMRI_CARIT/tfMRI_HCD1840251_*.csv: No such file or directory
+",0,0,1,,HCD1840251
+573,log/hcp1st-45075917_573.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD1845160
+578,log/hcp1st-45075917_578.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_PA,HCD1855365
+626,log/hcp1st-45075917_626.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD2030726
+661,log/hcp1st-45075917_661.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD2211932/tfMRI_CARIT/tfMRI_HCD2211932_*.csv: No such file or directory
+",0,0,1,,HCD2211932
+668,log/hcp1st-45075917_668.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD2240030/tfMRI_CARIT/tfMRI_HCD2240030_*.csv: No such file or directory
+",0,0,1,,HCD2240030
+679,log/hcp1st-45075917_679.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD2322335_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD2322335
+730,log/hcp1st-45075917_731.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD2600034_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD2600034
+732,log/hcp1st-45075917_733.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD2607452
+734,log/hcp1st-45075917_735.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD2617657_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD2617657
+739,log/hcp1st-45075917_740.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD2635659_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_AP,HCD2635659
+742,log/hcp1st-45075917_743.out,1,"ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD2662763_V1_MR/MNINonLinear/Results/tfMRI_CARIT_PA/tfMRI_CARIT_PA_Atlas_hp0_clean.dtseries.nii'
+",0,3,0,tfMRI_CARIT_PA,HCD2662763
+757,log/hcp1st-45075917_758.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD2743157
+760,log/hcp1st-45075917_761.out,1,"F-test 2 isn't valid - each included contrast cannot be a linear combination of the others.
+",1,0,0,tfMRI_CARIT_AP,HCD2751964
+798,log/hcp1st-45075917_799.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD2982276/tfMRI_CARIT/tfMRI_HCD2982276_*.csv: No such file or directory
+",0,0,1,,HCD2982276
+805,log/hcp1st-45075917_806.out,1,"ls: cannot access /ncf/hcp/data/CCF_HCD_STG_PsychoPy_files//HCD2996590/tfMRI_CARIT/tfMRI_HCD2996590_*.csv: No such file or directory
+",0,0,1,,HCD2996590
