@@ -10,7 +10,7 @@
 #SBATCH -o log/%x-%A_%a.out
 ###
 # Usage:
-# sbatch --array=<range> <this script name> <input file> <template.fsf> [GUESSING|CARIT] [1st|2nd]
+# sbatch --array=<range> <this script name> <input file> <template.fsf> [GUESSING|CARIT] [1st|2nd] [parcellated]
 #
 # <range> should be lines of <input file>, numbered starting from 0
 # <input file> lines should be of the following format:
@@ -24,6 +24,8 @@
 # relevant directories.
 # [1st|2nd] is an optional argument that specifies to run just 1st or  
 # also run 2nd level  models.
+# [parcellated] tells the script to run using parcellated data. For now
+# the parcellation is hard-coded.
 ##
 
 set -eou pipefail
