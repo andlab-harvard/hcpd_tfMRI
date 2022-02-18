@@ -33,12 +33,27 @@ source /users/jflournoy/code/R_3.5.1_modules.bash
 export HCPPIPEDIR="/ncf/mclaughlin/users/jflournoy/code/HCPpipelines/"
 source SetUpHCPPipeline.sh
 
+thisdir=$(pwd -P)
 i=$SLURM_ARRAY_TASK_ID
 TaskAnalysisiInput=$1
 TemplateFSF=$2
 #In future, we might be able to get the taskname from the input file.
 TaskName=$3
 L="${4}"
+
+if [ -z "${5}" ] && [ "${5}" = "parcellated" ]; then
+	parcellated=1
+	parcellation_file="${thisdir}/first_level/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dlabel.nii"
+	parcellation_name="ColeAnticevic"
+	echo "Running parcellated analysis"
+	if [ ! -f "${parcellation_file}" ]; then
+		echo "Parcellation file does not exist: ${parcellation_file}"
+		exit 1
+	fi
+else
+	parcellated=0
+fi
+
 if [ ! -z "${L}" ] && [ "${L}" != "2nd" ] && [ "${L}" != "1st" ]; then
 	echo "Argument 4 not understood: ${L}"
 	exit 1
@@ -93,6 +108,11 @@ if [ ! -z "${L}" ] && [ "${L}" == "2nd" ]; then
 		--procstring=hp0_clean \
 		--finalsmoothingFWHM=4 \
 		--highpassfilter=200"
+	if [ ${parcellated} = 1 ]; then 
+		runme="${runme} \
+			--parcellation=${parcellation_name} \
+			--parcellationfile=${parcellation_file}"
+	fi
 elif [ ! -z "${L}" ] && [ "${L}" == "1st" ]; then
 	runme="srun -c 1 bash ${TaskfMRIAnalysis} --study-folder=${STUDYFOLDER} \
 		--subject=${SUBJECTID} \
