@@ -1,0 +1,110 @@
+'carit_l1_template.fsf' -> '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_hp200_s4_level1.fsf'
+'carit_l1_template.fsf' -> '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results/tfMRI_CARIT_PA/tfMRI_CARIT_PA_hp200_s4_level1.fsf'
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: Path: /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: Subject: HCD1546857_V1_MR
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: LevelOnefMRINames: tfMRI_CARIT_AP@tfMRI_CARIT_PA
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: LevelOnefsfNames: tfMRI_CARIT_AP@tfMRI_CARIT_PA
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: LevelTwofMRIName: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: LevelTwofsfName: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: Confound: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: OriginalSmoothingFWHM: 2
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: FinalSmoothingFWHM: 4
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: TemporalFilter: 200
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: TemporalSmoothing: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: ProcSTRING: hp0_clean
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: LowResMesh: 32
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: GrayordinatesResolution: 2
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: RegName: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: VolumeBasedProcessing: NO
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: Parcellation: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: ParcellationFile: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: Platform Information Follows: 
+Linux holy7c22411.rc.fas.harvard.edu 3.10.0-1160.36.2.el7.x86_64 #1 SMP Wed Jul 21 11:57:15 UTC 2021 x86_64 x86_64 x86_64 GNU/Linux
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: HCPPIPEDIR: /ncf/mclaughlin/users/jflournoy/code/HCPpipelines/
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: FSLDIR: /ncf/nrg/sw/apps/fsl/6.0.4
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: CARET7DIR: /n/sw/fasrcsw/apps/Core/workbench/1.0-fasrc01/bin_rh_linux64
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: INFO: Determined that the FSL version in use is 6.0.4:ddd0a010
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: Beginning analyses with FSL version 6.0.4:ddd0a010
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: RUN_LEVEL1: Running Level 1 Analysis for Both Phase Encoding Directions
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: RUN_LEVEL1: LevelOnefMRIName: tfMRI_CARIT_AP
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: RUN_LEVEL1: Issuing command: /ncf/mclaughlin/users/jflournoy/code/HCPpipelines//TaskfMRIAnalysis/scripts/TaskfMRILevel1.sh HCD1546857_V1_MR /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/ROIs /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/fsaverage_LR32k tfMRI_CARIT_AP tfMRI_CARIT_AP 32 2 2 NONE 4 200 NO NONE NONE NONE hp0_clean NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: HCPPIPEDIR: /ncf/mclaughlin/users/jflournoy/code/HCPpipelines/
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: FSLDIR: /ncf/nrg/sw/apps/fsl/6.0.4
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: CARET7DIR: /n/sw/fasrcsw/apps/Core/workbench/1.0-fasrc01/bin_rh_linux64
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: TOOL_VERSIONS: Showing HCP Pipelines version
+fatal: Unimplemented pathspec magic '!' in ':!/Examples/'
+Post-v4.3.0-MOD-2998161
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: TOOL_VERSIONS: Showing Connectome Workbench (wb_command) version
+Connectome Workbench
+Version: 1.0
+Qt Compiled Version: 4.8.4
+Qt Runtime Version: 4.8.4
+commit: dfd2086d37612ccf2369b85b5f5f0f5987369339
+commit date: 2014-09-09 13:23:57 -0500
+Compiler: g++44 (/usr/bin)
+Compiler Version: 4.4.7
+Compiled Debug: NO
+Operating System: Linux
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: INFO: Determined that the FSL version in use is 6.0.4:ddd0a010
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: TaskfMRILevel1.sh arguments: HCD1546857_V1_MR /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/ROIs /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/fsaverage_LR32k tfMRI_CARIT_AP tfMRI_CARIT_AP 32 2 2 NONE 4 200 NO NONE NONE NONE hp0_clean NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: Subject: HCD1546857_V1_MR
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: ResultsFolder: /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: ROIsFolder: /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/ROIs
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: DownSampleFolder: /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/fsaverage_LR32k
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: LevelOnefMRIName: tfMRI_CARIT_AP
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: LevelOnefsfName: tfMRI_CARIT_AP
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: LowResMesh: 32
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: GrayordinatesResolution: 2
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: OriginalSmoothingFWHM: 2
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: Confound: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: FinalSmoothingFWHM: 4
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: TemporalFilter: 200
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: VolumeBasedProcessing: NO
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: RegName: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: Parcellation: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: ParcellationFile: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: ProcSTRING: hp0_clean
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: READ_ARGS: TemporalSmoothing: NONE
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: MAIN: DETERMINE_ANALYSES: Dense Analysis requested
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: MAIN: SET_NAME_STRINGS: SmoothingString: _s4
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: MAIN: SET_NAME_STRINGS: TemporalFilterString: _hp200
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: MAIN: SET_NAME_STRINGS: RegString: 
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: MAIN: SET_NAME_STRINGS: ParcellationString: 
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: MAIN: SET_NAME_STRINGS: Extension: dtseries.nii
+While running '/n/sw/fasrcsw/apps/Core/workbench/1.0-fasrc01/bin_rh_linux64/../exe_rh_linux64/wb_command -file-information /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii -no-map-info -only-step-interval':
+ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+While running '/n/sw/fasrcsw/apps/Core/workbench/1.0-fasrc01/bin_rh_linux64/../exe_rh_linux64/wb_command -file-information /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii -no-map-info -only-step-interval':
+ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: While running '/ncf/mclaughlin/users/jflournoy/code/HCPpipelines//TaskfMRIAnalysis/scripts/TaskfMRILevel1.sh HCD1546857_V1_MR /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/ROIs /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/fsaverage_LR32k tfMRI_CARIT_AP tfMRI_CARIT_AP 32 2 2 NONE 4 200 NO NONE NONE NONE hp0_clean NONE':
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: ERROR: 'TR_vol=' command failed with return code: 255
+Thu Feb 17 00:51:05 EST 2022:TaskfMRILevel1.sh: ERROR: 'TR_vol=' command failed with return code: 255
+
+===> ERROR: Command returned with nonzero exit code
+---------------------------------------------------
+         script: TaskfMRILevel1.sh
+stopped at line: 197
+           call: TR_vol=`${CARET7DIR}/wb_command -file-information ${ResultsFolder}/${LevelOnefMRIName}/${LevelOnefMRIName}_Atlas${RegString}${ProcSTRING}.dtseries.nii -no-map-info -only-step-interval`
+While running '/n/sw/fasrcsw/apps/Core/workbench/1.0-fasrc01/bin_rh_linux64/../exe_rh_linux64/wb_command -file-information /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii -no-map-info -only-step-interval':
+ERROR: failed to open file '/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_Atlas_hp0_clean.dtseries.nii'
+  expanded call: TR_vol=
+      exit code: 255
+---------------------------------------------------
+
+===> Aborting execution!
+
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: While running '/ncf/mclaughlin/users/jflournoy/code/HCPpipelines//TaskfMRIAnalysis/TaskfMRIAnalysis.sh --study-folder=/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix --subject=HCD1546857_V1_MR --lvl1tasks=tfMRI_CARIT_AP@tfMRI_CARIT_PA --procstring=hp0_clean --finalsmoothingFWHM=4 --highpassfilter=200':
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: ERROR: '/ncf/mclaughlin/users/jflournoy/code/HCPpipelines//TaskfMRIAnalysis/scripts/TaskfMRILevel1.sh' command failed with return code: 255
+Thu Feb 17 00:51:05 EST 2022:TaskfMRIAnalysis.sh: ERROR: '/ncf/mclaughlin/users/jflournoy/code/HCPpipelines//TaskfMRIAnalysis/scripts/TaskfMRILevel1.sh' command failed with return code: 255
+
+===> ERROR: Command returned with nonzero exit code
+---------------------------------------------------
+         script: TaskfMRIAnalysis.sh
+stopped at line: 232
+           call: ${HCPPIPEDIR_tfMRIAnalysis}/TaskfMRILevel1.sh $Subject $ResultsFolder $ROIsFolder $DownSampleFolder $LevelOnefMRIName $LevelOnefsfName $LowResMesh $GrayordinatesResolution $OriginalSmoothingFWHM $Confound $FinalSmoothingFWHM $TemporalFilter $VolumeBasedProcessing $RegName $Parcellation $ParcellationFile $ProcSTRING $TemporalSmoothing
+  expanded call: /ncf/mclaughlin/users/jflournoy/code/HCPpipelines//TaskfMRIAnalysis/scripts/TaskfMRILevel1.sh HCD1546857_V1_MR /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/Results /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/ROIs /net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix/HCD1546857_V1_MR/MNINonLinear/fsaverage_LR32k tfMRI_CARIT_AP tfMRI_CARIT_AP 32 2 2 NONE 4 200 NO NONE NONE NONE hp0_clean NONE
+      exit code: 255
+---------------------------------------------------
+
+===> Aborting execution!
+
+srun: error: holy7c22411: task 0: Exited with exit code 255

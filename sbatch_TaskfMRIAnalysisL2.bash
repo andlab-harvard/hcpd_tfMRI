@@ -28,7 +28,7 @@
 # the parcellation is hard-coded.
 ##
 
-set -eou pipefail
+set -eoux pipefail
 
 source /users/jflournoy/code/FSL-6.0.4_workbench-1.0.txt
 source /users/jflournoy/code/R_3.5.1_modules.bash
@@ -43,7 +43,7 @@ TemplateFSF=$2
 TaskName=$3
 L="${4}"
 
-if [ -z "${5}" ] && [ "${5}" = "parcellated" ]; then
+if [ ! -z "${5-}" ] && [ "${5}" = "parcellated" ]; then
 	parcellated=1
 	parcellation_file="${thisdir}/first_level/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dlabel.nii"
 	parcellation_name="ColeAnticevic"
@@ -110,11 +110,6 @@ if [ ! -z "${L}" ] && [ "${L}" == "2nd" ]; then
 		--procstring=hp0_clean \
 		--finalsmoothingFWHM=4 \
 		--highpassfilter=200"
-	if [ ${parcellated} = 1 ]; then 
-		runme="${runme} \
-			--parcellation=${parcellation_name} \
-			--parcellationfile=${parcellation_file}"
-	fi
 elif [ ! -z "${L}" ] && [ "${L}" == "1st" ]; then
 	runme="srun -c 1 bash ${TaskfMRIAnalysis} --study-folder=${STUDYFOLDER} \
 		--subject=${SUBJECTID} \
@@ -122,6 +117,11 @@ elif [ ! -z "${L}" ] && [ "${L}" == "1st" ]; then
 		--procstring=hp0_clean \
 		--finalsmoothingFWHM=4 \
 		--highpassfilter=200"
+	if [ ${parcellated} = 1 ]; then 
+		runme="${runme} \
+			--parcellation=${parcellation_name} \
+			--parcellationfile=${parcellation_file}"
+	fi
 fi
 	
 eval "${runme}"
