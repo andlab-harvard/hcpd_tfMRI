@@ -4,25 +4,27 @@
 #Details: This merely traverses the data in which we download the staged multirunfix data and inserts the correct
 # information if these directories exist for a specific user.
 #
-#To do: modify to allow other tasks.
 
 from os import walk, listdir, path
 from re import match
 import pandas as pd
+task='GUESSING'
+#task='CARIT'
 hcpdir='/ncf/hcp/data/HCD-tfMRI-MultiRunFix'
-print('Getting ID dirs')
+print('Getting {} dirs'.format(task))
 id_dirs=[adir for adir in listdir(hcpdir) if match(r"HCD[0-9]{7}_V1_MR", adir)]
-def get_CARIT_dirs(id_dir, basedir):
+def get_task_dirs(id_dir, basedir, task):
     dirpostfix='MNINonLinear/Results'
     full_id_dir='/'.join([hcpdir,id_dir, dirpostfix])
     if path.isdir(full_id_dir):
-        carit_dirs='@'.join([carit for carit in listdir(full_id_dir) if match(r"tfMRI_CARIT_(AP|PA)", carit)])
+        task_dirs='@'.join([task_dir for task_dir in listdir(full_id_dir) if match(r"tfMRI_" + task + "_(AP|PA)", task_dir)])
     else:
         print("Warning, directory does not exist: " + full_id_dir)
-        carit_dirs=''
-    return(carit_dirs)
+        task_dirs=''
+    return(task_dirs)
 print('Getting CARIT dirs for each ID dir')
-carit_dirs=[get_CARIT_dirs(id_dir=id_dir, basedir=hcpdir) for id_dir in id_dirs]
+task_dirs=[get_task_dirs(id_dir=id_dir, basedir=hcpdir, task=task) for id_dir in id_dirs]
+
 print('Saving results...')
-input_df=pd.DataFrame(data = {'id' : id_dirs, 'task' : carit_dirs, 'l2' : "tfMRI_CARIT"})
-input_df[input_df.task != ''].to_csv('TaskAnalysis_input.txt', sep = ' ', header = False, index = False)
+input_df=pd.DataFrame(data = {'id' : id_dirs, 'task' : task_dirs, 'l2' : "tfMRI_" + task})
+input_df[input_df.task != ''].to_csv('{}_TaskAnalysis_input.txt'.format(task), sep = ' ', header = False, index = False)
