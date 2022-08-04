@@ -4,7 +4,7 @@
 #SBATCH -n 1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=12G
-#SBATCH -p ncf
+#SBATCH -p fasse
 #SBATCH --account=somerville_lab
 # Outputs ----------------------------------
 #SBATCH -o log/%x-%A_%a.out
@@ -30,8 +30,8 @@
 
 set -eoux pipefail
 
-source /users/jflournoy/code/FSL-6.0.4_workbench-1.0.txt
-source /users/jflournoy/code/R_3.5.1_modules.bash
+source /n/home_fasse/jflournoy/code/FSL-6.0.4_workbench-1.0.txt
+source /n/home_fasse/jflournoy/code/R_3.5.1_modules.bash
 export HCPPIPEDIR="/ncf/mclaughlin/users/jflournoy/code/HCPpipelines/"
 source SetUpHCPPipeline.sh
 
@@ -67,7 +67,7 @@ fi
 
 DTFILE="../tfMRI_${TaskName}_AP_Atlas_hp0_clean.dtseries.nii"
 TaskfMRIAnalysis="${HCPPIPEDIR}/TaskfMRIAnalysis/TaskfMRIAnalysis.sh"
-STUDYFOLDER="/net/holynfs01/srv/export/ncf_hcp/share_root/data/HCD-tfMRI-MultiRunFix"
+STUDYFOLDER="/ncf/hcp/data/HCD-tfMRI-MultiRunFix"
 SUBJECTIDS=($(awk '{ print $1 }' ${TaskAnalysisiInput}))
 TASKIDS=($(awk '{ print $2 }' ${TaskAnalysisiInput}))
 TASKIDSL2=($(awk '{ print $3 }' ${TaskAnalysisiInput}))
@@ -92,7 +92,7 @@ for TASK in ${TASKARRAY[@]}; do
 		TASKSHORT=${TASKSHORT#*_}
 		CSVFN="${TASKSHORT}_${CSVID}_*.csv"
 		CSVFILE=$(ls ${CSVFILEBASE}/${CSVID}/${TASK}/${CSVFN})
-		Rscript create_EVs.R --evdir ${EVDIR} ${CSVFILE} 
+		Rscript first_level/create_EVs.R --evdir ${EVDIR} ${CSVFILE} 
 	fi
 done
 

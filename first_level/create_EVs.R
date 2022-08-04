@@ -137,8 +137,8 @@ parser$add_argument('--task', type = 'character',
                     help = 'GUESSING or CARIT. If not supplied, script will guess from the name of the input file.')
 # parser$parse_args('-h')
 # args <- parser$parse_args('/ncf/hcp/data/CCF_HCD_STG_PsychoPy_files/HCD0001305/tfMRI_GUESSING_AP/GUESSING_HCD0001305_V1_A_run2_wide.csv')
- args <- parser$parse_args('/ncf/hcp/data/CCF_HCD_STG_PsychoPy_files/HCD2156344/tfMRI_CARIT_AP/CARIT_HCD2156344_V1_A_run2_wide.csv')
-#args <- parser$parse_args()
+# args <- parser$parse_args('/ncf/hcp/data/CCF_HCD_STG_PsychoPy_files/HCD2156344/tfMRI_CARIT_AP/CARIT_HCD2156344_V1_A_run2_wide.csv')
+args <- parser$parse_args()
 
 if(args$evdir == 'EVs'){
   EV_dir <- file.path(dirname(args$csv_file), args$evdir)
