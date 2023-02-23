@@ -3,13 +3,18 @@ load_hcpd_data <- function(task = 'carit', nthreads = 1){
   
   setDTthreads(nthreads)
   
-  fname <- sprintf('group_level_roi/roi_data_%s_w.rds', task)
+  if(grepl('group_level_roi', getwd())){
+    fname_dir <-  '.'
+  } else {
+    fname_dir <-  'group_level_roi'
+  }
+  fname <- file.path(fname_dir, sprintf('roi_data_%s_w.rds', task))
   
   message(sprintf('Retrieving %s data...', task))
   if(!file.exists(fname)){
     message('RDS data not found, loading from csv (and saving result as RDS for future speedup)')
     require(stringi)
-    roi_data <- fread(file = 'group_level_roi/roi_data.csv',
+    roi_data <- fread(file = file.path(fname_dir, 'roi_data.csv'),
                       sep = ',',
                       quote = '',
                       header = TRUE,
@@ -41,11 +46,8 @@ load_hcpd_data <- function(task = 'carit', nthreads = 1){
     
     saveRDS(roi_data_scans_w, file = fname, compress = TRUE)
   } else {
-    message('Loading data from RDS file...')
+    message('Loading data from RDS file')
     roi_data_scans_w <- readRDS(fname)
   }
   return(roi_data_scans_w)
 }
-
-carit_scans <- load_hcpd_data(task = 'carit', nthreads = 4)
-guessing_scans <- load_hcpd_data(task = 'guessing', nthreads = 4)

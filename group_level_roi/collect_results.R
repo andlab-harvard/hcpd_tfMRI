@@ -1,0 +1,154 @@
+.libPaths(new = c('/ncf/mclaughlin/users/jflournoy/R/x86_64-pc-linux-gnu-library/verse-4.2.1', .libPaths()))
+Sys.setenv(R_PROGRESSR_ENABLE=TRUE)
+library(data.table)
+library(data.table)
+library(brms)
+library(future.apply)
+library(progressr)
+handlers(global = TRUE)
+handlers(handler_progress(format = "[:bar] :message"))
+CPUS_DEFAULT <- 4
+cpus_total <- as.numeric(Sys.getenv('SLURM_CPUS_PER_TASK'))
+if(is.na(cpus_total)){
+  cpus_total <- CPUS_DEFAULT
+  message(sprintf('Using %d CPUs...', cpus_total))
+}
+
+parse_filenames <- function(x, regex, colnames){
+  require(stringi)
+  require(data.table)
+  
+  parsed_dt <- as.data.table(transpose(stri_match_all_regex(x, regex)))
+  setnames(parsed_dt, c('file', colnames))
+  return(parsed_dt)
+}
+read_rds_file <- function(x){
+  require(brms)
+  fits <- lapply(x, readRDS)
+  cfit <- brms::combine_models(mlist = fits)
+  return(cfit)
+}
+make_newdata_carit <- function(fit){
+  require(data.table)
+  age_range <- range(fit$data$age_c10)
+  age_seq <- seq(from = age_range[[1]], to = age_range[[2]], length.out = 50)
+  conditions <- unique(fit$data$condition)
+  newdata <- as.data.table(expand.grid(age_c10 = age_seq, condition = conditions, SE = 0))
+  return(newdata)
+}
+prediction_posteriors <- function(newdata_function, contrasts, dcast_col = 'condition', posterior_by_col = 'age_c10'){
+  newdata_function <- newdata_function
+  ret_func <- function(x){
+    #x <- fit_files[1,]
+    #newdata_function <- make_newdata_carit
+    # contrasts <- list(
+    #   'CR' = '(1/3)*(CR_2go + CR_3go + CR_4go)',
+    #   'Hit' = '(1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
+    #   'CRmHit' = '(1/3)*(CR_2go + CR_3go + CR_4go) - (1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
+    #   'GoxPrepot' = '(1/3)*(Hit_1go + Hit_2go + Hit_3go) - Hit_4go',
+    #   'CRxPrepot' = '(1/2)*(CR_2go + CR_3go) - CR_4go')
+    
+    require(brms)
+    require(data.table)
+    newdata_function <- newdata_function
+    newdata <- newdata_function(x)
+    epred <- as.data.table(brms::posterior_epred(x, newdata = newdata, re_formula = NA))
+    epred[, draw_id := 1:.N]
+    epred <- melt(epred, variable.name = 'index', id.vars = 'draw_id')
+    newdata[, index := sprintf('V%d', 1:.N)]
+    newdata_epred <- merge(epred, newdata, by = 'index', all.x = TRUE)
+    dcast_formula <- formula(sprintf('... ~ %s', dcast_col))
+    newdata_epred_w <- dcast(newdata_epred[, -'index'], dcast_formula)
+    newdata_epred_w[, names(contrasts) := lapply(contrasts, \(x){ eval(parse(text = x)) })]
+    newdata_epred_post_summary <-  
+      newdata_epred_w[, as.data.table(posterior_summary(.SD, robust = TRUE), keep.rownames = 'param'), 
+                      .SDcols = names(contrasts), by = c(posterior_by_col)]
+    return(newdata_epred_post_summary)
+  }
+  return(ret_func)
+}
+run_process_data_function <- function(x, process_data_function, p){
+  #x <- x[1,]
+  fit <- read_rds_file(x$file)
+  out_data_list <- lapply(process_data_function, \(f){
+    out_data <- f(fit)
+    out_data <- cbind(x, out_data, fill = TRUE)
+    return(out_data)
+  })
+  p(message = sprintf('%s', x$file))
+  return(out_data_list)
+}
+
+parallel_process_data_file <- function(x, process_data_function, split_cols, cpus_total, p){
+  #x <- x[1:8, ]
+  require(future.apply)
+  plan('multisession', workers = cpus_total)
+  
+  # cl <- parallel::makeCluster(cpus_total)
+  # 
+  # parallel::clusterExport(cl, ls(.GlobalEnv), envir = .GlobalEnv)
+  # parallel::clusterExport(cl, ls(), envir = environment())
+  # nada <- parallel::clusterEvalQ(cl, {
+  #   library(data.table)
+  #   library(brms)
+  #   setDTthreads(1)
+  #   .libPaths(new = c('/ncf/mclaughlin/users/jflournoy/R/x86_64-pc-linux-gnu-library/verse-4.2.1', .libPaths()))
+  # })
+  system.time({
+    message('Submitting to parallel processes...')
+    filename_list <- split(
+      split(x, by = split_cols, drop = TRUE), 
+      1:cpus_total)
+    data_out_list <<- future.apply::future_lapply(filename_list, function(some_fns){
+      lapply(some_fns, run_process_data_function, process_data_function = process_data_function, p = p)
+    })
+  })
+  
+  # parallel::stopCluster(cl)
+  return(data_out_list)
+}
+
+if(grepl('group_level_roi', getwd())){
+  basepath <- '.'
+} else {
+  basepath <- 'group_level_roi'
+}
+fit_dir <- file.path(basepath, 'fits')
+
+collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'spline_contrasts2.rds'),
+                                              pattern = 'm0_spline.*rds',
+                                              regex = file.path(fit_dir, 'm0_(spline)-(\\d{3})\\.rds'),
+                                              colnames = c('model', 'roi'),
+                                              process_data_function = 
+                                                list(prediction_posteriors(newdata_function = make_newdata_carit,
+                                                                           contrasts = list(
+                                                                             CR = '(1/3)*(CR_2go + CR_3go + CR_4go)',
+                                                                             Hit = '(1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
+                                                                             CRmHit = '(1/3)*(CR_2go + CR_3go + CR_4go) - (1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
+                                                                             GoxPrepot = '(1/3)*(Hit_1go + Hit_2go + Hit_3go) - Hit_4go',
+                                                                             CRxPrepot = '(1/2)*(CR_2go + CR_3go) - CR_4go')))))
+
+#x=collect_data_list[[1]]
+rez_list <- lapply(collect_data_list, \(x){
+  if(!file.exists(x$data_fn)){
+    
+    message(sprintf('Collecting filenames from %s', file.path(fit_dir, x$pattern)))
+    fit_files <- parse_filenames(dir(fit_dir, pattern = x$pattern, full.names = TRUE),
+                                 regex = x$regex,
+                                 colnames = x$colnames)
+    split_cols <- x$colnames
+    p <- progressr::progressor(along = fit_files$file)
+    rez_data <- parallel_process_data_file(x = fit_files, 
+                                           process_data_function = x$process_data_function, 
+                                           split_cols = split_cols, 
+                                           cpus_total = cpus_total,
+                                           p = p)
+    message(sprintf('Done. Writing data to %s', x$data_fn))
+    saveRDS(rez_data, file = x$data_fn)
+  } else {
+    message(sprintf('Reading data from %s', x$data_fn))
+    rez_data <- readRDS(file = x$data_fn)
+  }
+  return(rez_data)
+})
+

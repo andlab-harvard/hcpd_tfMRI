@@ -30,8 +30,8 @@
 
 set -eoux pipefail
 
-source /n/home_fasse/jflournoy/code/FSL-6.0.4_workbench-1.0.txt
-source /n/home_fasse/jflournoy/code/R_3.5.1_modules.bash
+source /ncf/mclaughlin/users/jflournoy/code/FSL-6.0.4_workbench-1.3.2.txt
+source /ncf/mclaughlin/users/jflournoy/code/R_3.5.1_modules.bash
 export HCPPIPEDIR="/ncf/mclaughlin/users/jflournoy/code/HCPpipelines/"
 source SetUpHCPPipeline.sh
 
