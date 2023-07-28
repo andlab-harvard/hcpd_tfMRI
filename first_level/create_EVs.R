@@ -55,37 +55,50 @@ save_evs <- function(x, EV_dir){
   return(evfn)
 }
 
-process_carit_evs <- function(d){
+process_carit_evs <- function(d, carit = 'prepot'){
   d[, evtime := round(shapeStartTime - 8, 6)]
   
   setorder(d, trialNum)
   setnames(d, 'corrAns', 'trialType')
-  d[, prepotency := factor(prepotency,levels=c("2","3","4"),labels=c("2go","3go","4go"))]
   
-  d[, trial_type_diff := lag1_num_fac_diff(trialType, levels = c('go', 'nogo'))]
-  d[, chunkID := cumsum(trial_type_diff)]
-  d[, N_of_trialType := 1:.N, by = 'chunkID']
-  d[trialType == 'go', ppgo := paste0(N_of_trialType, 'go')]
-  d[, EVpp := fifelse(is.na(prepotency), ppgo, as.character(prepotency))]
-  d[, EVtrialType := fifelse(corrRespTrialType == 'Miss', 
-                             as.character(corrRespTrialType), 
-                             paste(corrRespTrialType, EVpp, sep = '_'))]
-  
-  d <- d[! EVtrialType %in% c('_1go', '_2go', '_3go', '_4go')]
-  
-  all_trialtype <- data.table(EVtrialType = c(
-    'Hit_1go',
-    'Hit_2go',
-    'Hit_3go',
-    'Hit_4go',
-    'corReject_2go',
-    'corReject_3go',
-    'corReject_4go',
-    'falseAlarm_2go',
-    'falseAlarm_3go',
-    'falseAlarm_4go',
-    'Miss'))
-  
+  if(carit == 'prepot'){
+    d[, prepotency := factor(prepotency,levels=c("2","3","4"),labels=c("2go","3go","4go"))]
+    d[, trial_type_diff := lag1_num_fac_diff(trialType, levels = c('go', 'nogo'))]
+    d[, chunkID := cumsum(trial_type_diff)]
+    d[, N_of_trialType := 1:.N, by = 'chunkID']
+    d[trialType == 'go', ppgo := paste0(N_of_trialType, 'go')]
+    d[, EVpp := fifelse(is.na(prepotency), ppgo, as.character(prepotency))]
+    d[, EVtrialType := fifelse(corrRespTrialType == 'Miss', 
+                               as.character(corrRespTrialType), 
+                               paste(corrRespTrialType, EVpp, sep = '_'))]
+    d <- d[! EVtrialType %in% c('_1go', '_2go', '_3go', '_4go')]
+    all_trialtype <- data.table(EVtrialType = c(
+      'Hit_1go',
+      'Hit_2go',
+      'Hit_3go',
+      'Hit_4go',
+      'corReject_2go',
+      'corReject_3go',
+      'corReject_4go',
+      'falseAlarm_2go',
+      'falseAlarm_3go',
+      'falseAlarm_4go',
+      'Miss')) 
+  } else if (carit == 'prevcond') {
+    d[, EVtrialType := ifelse(trialType == 'nogo', 
+                              paste(corrRespTrialType, nogoCondition, sep = '_'),
+                              corrRespTrialType)]
+    all_trialtype <- data.table(EVtrialType = c(
+      'Hit',
+      'corReject_prevRewNogo',
+      'corReject_neutralNogo',
+      'falseAlarm_prevRewNogo',
+      'falseAlarm_neutralNogo',
+      'Miss')) 
+  } else {
+    stop('`carit` argument not set.')
+  }
+  num_conditions <- dim(all_trialtype)[[1]]
   d_all_trialtype <- d[all_trialtype, on = c('EVtrialType')]
   d_all_trialtype$dur <- NA_real_
   d_all_trialtype$amp <- NA_real_
@@ -94,8 +107,8 @@ process_carit_evs <- function(d){
   setorder(d_all_trialtype, EVtrialType, trialNum)
   d_all_trialtype_split <- split(d_all_trialtype, by = c('EVtrialType'))
   
-  if(length(d_all_trialtype_split) != 11){
-    stop("Number of conditions is not 11.")
+  if(length(d_all_trialtype_split) != num_conditions){
+    stop(sprintf("Number of conditions is not %s", num_conditions))
   }
   
   return(d_all_trialtype_split)
@@ -135,12 +148,20 @@ parser$add_argument('--evdir', type = 'character', default = 'EVs',
                     help = 'Path to the folder to save the EV text files. Default is to store it in "EVs" under the directory where the csv file is.')
 parser$add_argument('--task', type = 'character', 
                     help = 'GUESSING or CARIT. If not supplied, script will guess from the name of the input file.')
+parser$add_argument('--carit', type = 'character', default = NULL, 
+                    help = 'Implies "--task CARIT". Options are `prepot` or `prevcond`. Default is `prepot`. Specifies whether you want EVs split by prepotency or previously-conditioned. If this is specified, and "--evdir" is not specified, then this flag will be postpended to the default EV directory filename.')
 # parser$parse_args('-h')
 # args <- parser$parse_args('/ncf/hcp/data/CCF_HCD_STG_PsychoPy_files/HCD0001305/tfMRI_GUESSING_AP/GUESSING_HCD0001305_V1_A_run2_wide.csv')
-# args <- parser$parse_args('/ncf/hcp/data/CCF_HCD_STG_PsychoPy_files/HCD2156344/tfMRI_CARIT_AP/CARIT_HCD2156344_V1_A_run2_wide.csv')
+# args <- parser$parse_args(c('/ncf/hcp/data/CCF_HCD_STG_PsychoPy_files/HCD2156344/tfMRI_CARIT_AP/CARIT_HCD2156344_V1_A_run2_wide.csv', '--carit', 'prevcond'))
 args <- parser$parse_args()
 
+if(!is.null(args$carit)){
+  args$task <- 'CARIT'
+}
 if(args$evdir == 'EVs'){
+  if(!is.null(args$carit)){
+    args$evdir <- paste(args$evdir, args$carit, sep = '_')
+  }
   EV_dir <- file.path(dirname(args$csv_file), args$evdir)
 } else {
   EV_dir <- args$evdir
@@ -166,12 +187,22 @@ if(!task %in% c('GUESSING', 'CARIT')){
                   'feedbackName', 
                   'valueCondition')
 } else if(task == 'CARIT') {
+  if(is.null(args$carit)){
+    args$carit <- 'prepot'
+  }
   col_select <- c('trialNum', 
                   'corrAns', 
                   'shapeStartTime',
-                  'prepotency',
                   'corrRespTrialType')
+  if(args$carit == 'prepot'){
+    col_select <- c(col_select, 'prepotency')
+  } else if(args$carit == 'prevcond') {
+    col_select <- c(col_select, 'nogoCondition')
+  } else {
+    stop('--carit must be either "prepot" or "prevcond"')
+  }
 }
+
 
 message("Reading data from ", args$csv_file)
 
@@ -184,7 +215,7 @@ if(task == 'GUESSING'){
   d_all_trialtype_split <- process_guessing_evs(d)  
 }
 if(task == 'CARIT'){
-  d_all_trialtype_split <- process_carit_evs(d)  
+  d_all_trialtype_split <- process_carit_evs(d, carit = args$carit)  
 }
 
 if(!dir.exists(EV_dir)){
