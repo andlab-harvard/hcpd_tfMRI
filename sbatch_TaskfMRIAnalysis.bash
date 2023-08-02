@@ -33,34 +33,34 @@ source SetUpHCPPipeline.sh
 
 thisdir=$(pwd -P)
 i=$SLURM_ARRAY_TASK_ID
-TaskAnalysisiInput=$1
+TaskAnalysisInput=$1
 #In future, we might be able to get the taskname from the input file.
 TaskName=$2
 
 if [ ! -z "${3-}" ] && [ "${3}" = "parcellated" ]; then
-	parcellated=1
-	parcellation_file="${thisdir}/first_level/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dlabel.nii"
-	parcellation_name="ColeAnticevic"
-	echo "Running parcellated analysis"
-	if [ ! -f "${parcellation_file}" ]; then
-		echo "Parcellation file does not exist: ${parcellation_file}"
-		exit 1
-	fi
+    parcellated=1
+    parcellation_file="${thisdir}/first_level/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dlabel.nii"
+    parcellation_name="ColeAnticevic"
+    echo "Running parcellated analysis"
+    if [ ! -f "${parcellation_file}" ]; then
+        echo "Parcellation file does not exist: ${parcellation_file}"
+        exit 1
+    fi
 else
-	parcellated=0
+    parcellated=0
 fi
 
 if [ ! -z "${TaskName}" ] && [ "${TaskName}" != "CARIT" ] && [ "${TaskName}" != "GUESSING" ]; then
-	echo "Argument 2 not understood: ${TaskName}"
-	exit 1
+    echo "Argument 2 not understood: ${TaskName}"
+    exit 1
 fi
 
 DTFILE="../tfMRI_${TaskName}_AP_Atlas_hp0_clean.dtseries.nii"
 TaskfMRIAnalysis="${HCPPIPEDIR}/TaskfMRIAnalysis/TaskfMRIAnalysis.sh"
 STUDYFOLDER="/ncf/hcp/data/HCD-tfMRI-MultiRunFix"
-SUBJECTIDS=($(awk '{ print $1 }' ${TaskAnalysisiInput}))
-TASKIDS=($(awk '{ print $2 }' ${TaskAnalysisiInput}))
-FSFFILES=($(awk '{ print $3 }' ${TaskAnalysisiInput}))
+SUBJECTIDS=($(awk '{ print $1 }' ${TaskAnalysisInput}))
+TASKIDS=($(awk '{ print $2 }' ${TaskAnalysisInput}))
+FSFFILES=($(awk '{ print $3 }' ${TaskAnalysisInput}))
 
 SUBJECTID="${SUBJECTIDS[${i}]}"
 TASKID="${TASKIDS[${i}]}"
@@ -71,44 +71,46 @@ IFS="@" read -a TASKARRAY <<< $TASKID
 IFS="@" read -a FSFARRAY <<< $FSFFILE
 LENTASKARRAY=$( seq 0 $(( ${#TASKARRAY[@]} - 1 )) )
 for iTASKARRAY in ${LENTASKARRAY[@]}; do
-	FSFTEMPLATE=${FSFARRAY[${iTASKARRAY}]}
-	TASK=${TASKARRAY[${iTASKARRAY}]}
-	L1DIR="${STUDYFOLDER}/${SUBJECTID}/MNINonLinear/Results/${TASK}"
-	re='.*_(AP|PA)$'
-	if [[ ${TASK} =~ ${re} ]]; then
-		L1TEMPLATE="${L1DIR}/${FSFTEMPLATE}_${BASH_REMATCH[1]}_hp200_s4_level1.fsf"
-	else
-		echo "Can't extract direction from TASK, exiting"
-		exit 1
-	fi
-	cp -v ${FSFTEMPLATE}.fsf ${L1TEMPLATE}
-	NEWDTFILE="../${TASK}${DTFILE#../tfMRI_${TaskName}_AP}"
-	sed -i -e "s|${DTFILE}|${NEWDTFILE}|" ${L1TEMPLATE}
-	#check for EVs directory
-	EVDIR="${L1DIR}/EVs"
-	if [ ! -d "${EVDIR}" ]; then
-		CSVFILEBASE="/ncf/hcp/data/intradb_multiprocfix/"
-		CSVID="${SUBJECTID}"
-		TASKSHORT=${TASK%_*}
-		TASKSHORT=${TASKSHORT#*_}
-		CSVFN="${TASKSHORT}_${CSVID%_*_*}*_wide.csv"
-		CSVFILE=$(ls ${CSVFILEBASE}/${CSVID}/${TASK}/LINKED_DATA/PSYCHOPY/${CSVFN})
-		Rscript first_level/create_EVs.R --evdir ${EVDIR} ${CSVFILE} 
-	fi
+    FSFTEMPLATE=${FSFARRAY[${iTASKARRAY}]}
+    TASK=${TASKARRAY[${iTASKARRAY}]}
+    L1DIR="${STUDYFOLDER}/${SUBJECTID}/MNINonLinear/Results/${TASK}"
+    re='.*_(AP|PA)$'
+    if [[ ${TASK} =~ ${re} ]]; then
+        DIRECTION=${BASH_REMATCH[1]}
+        L1TEMPLATE="${L1DIR}/${FSFTEMPLATE}_${DIRECTION}_hp200_s4_level1.fsf"
+    else
+        echo "Can't extract direction from TASK, exiting"
+        exit 1
+    fi
+    cp -v ${FSFTEMPLATE}.fsf ${L1TEMPLATE}
+    NEWDTFILE="../${TASK}${DTFILE#../tfMRI_${TaskName}_AP}"
+    sed -i -e "s|${DTFILE}|${NEWDTFILE}|" ${L1TEMPLATE}
+    #check for EVs directory
+    EVDIR="${L1DIR}/EVs"
+    if [ ! -d "${EVDIR}" ]; then
+        CSVFILEBASE="/ncf/hcp/data/intradb_multiprocfix/"
+        CSVID="${SUBJECTID}"
+        TASKSHORT=${TASK%_*}
+        TASKSHORT=${TASKSHORT#*_}
+        CSVFN="${TASKSHORT}_${CSVID%_*_*}*_wide.csv"
+        CSVFILE=$(ls ${CSVFILEBASE}/${CSVID}/${TASK}/LINKED_DATA/PSYCHOPY/${CSVFN})
+        Rscript first_level/create_EVs.R --evdir ${EVDIR} ${CSVFILE} 
+    fi
+    FSFARRAY[${iTASKARRAY}]=${FSFARRAY[${iTASKARRAY}]}_${DIRECTION}
 done
-
+FSFFILE=$(IFS=@; echo "${FSFARRAY[*]}")
 
 runme="srun -c 1 bash ${TaskfMRIAnalysis} --study-folder=${STUDYFOLDER} \
-	--subject=${SUBJECTID} \
-	--lvl1tasks=${TASKID} \
-	--lvl1fsfs=${FSFFILE} \
-	--procstring=hp0_clean \
-	--finalsmoothingFWHM=4 \
-	--highpassfilter=200"
+    --subject=${SUBJECTID} \
+    --lvl1tasks=${TASKID} \
+    --lvl1fsfs=${FSFFILE} \
+    --procstring=hp0_clean \
+    --finalsmoothingFWHM=4 \
+    --highpassfilter=200"
 if [ ${parcellated} = 1 ]; then 
-	runme="${runme} \
-		--parcellation=${parcellation_name} \
-		--parcellationfile=${parcellation_file}"
+    runme="${runme} \
+        --parcellation=${parcellation_name} \
+        --parcellationfile=${parcellation_file}"
 fi
-	
+    
 eval "${runme}"
