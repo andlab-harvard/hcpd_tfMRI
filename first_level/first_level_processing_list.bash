@@ -1,8 +1,8 @@
 #!/bin/bash
 
-task="GUESSING"
-task_postfix=""
-fsf="tfMRI_GUESSING"
+task="CARIT"
+task_postfix="PREVCOD"
+fsf="tfMRI_CARIT_PREVCOND"
 acq=("PA" "AP")
 prefix="_"
 outfile="${task}-${task_postfix}-l1-list"

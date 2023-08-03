@@ -32,6 +32,10 @@ export HCPPIPEDIR="/ncf/mclaughlin/users/jflournoy/code/HCPpipelines/"
 source SetUpHCPPipeline.sh
 
 thisdir=$(pwd -P)
+#i=0
+#TaskAnalysisInput=first_level/CARIT-PREVCOD-l1-list_2run.txt
+#TaskName=CARIT
+#iTASKARRAY=0
 i=$SLURM_ARRAY_TASK_ID
 TaskAnalysisInput=$1
 #In future, we might be able to get the taskname from the input file.
@@ -85,17 +89,21 @@ for iTASKARRAY in ${LENTASKARRAY[@]}; do
     cp -v ${FSFTEMPLATE}.fsf ${L1TEMPLATE}
     NEWDTFILE="../${TASK}${DTFILE#../tfMRI_${TaskName}_AP}"
     sed -i -e "s|${DTFILE}|${NEWDTFILE}|" ${L1TEMPLATE}
-    #check for EVs directory
+    
     EVDIR="${L1DIR}/EVs"
-    if [ ! -d "${EVDIR}" ]; then
-        CSVFILEBASE="/ncf/hcp/data/intradb_multiprocfix/"
-        CSVID="${SUBJECTID}"
-        TASKSHORT=${TASK%_*}
-        TASKSHORT=${TASKSHORT#*_}
-        CSVFN="${TASKSHORT}_${CSVID%_*_*}*_wide.csv"
-        CSVFILE=$(ls ${CSVFILEBASE}/${CSVID}/${TASK}/LINKED_DATA/PSYCHOPY/${CSVFN})
-        Rscript first_level/create_EVs.R --evdir ${EVDIR} ${CSVFILE} 
+    OTHERARGS=""
+    prevcondre='.*PREVCOND.*'
+    if [[ $FSFTEMPLATE =~ ${prevcondre} ]]; then
+        OTHERARGS+=" --carit prevcond"
     fi
+    CSVFILEBASE="/ncf/hcp/data/intradb_multiprocfix/"
+    CSVID="${SUBJECTID}"
+    TASKSHORT=${TASK%_*}
+    TASKSHORT=${TASKSHORT#*_}
+    CSVFN="${TASKSHORT}_${CSVID%_*_*}*_wide.csv"
+    CSVFILE=$(ls ${CSVFILEBASE}/${CSVID}/${TASK}/LINKED_DATA/PSYCHOPY/${CSVFN})
+    Rscript first_level/create_EVs.R ${OTHERARGS} --evdir ${EVDIR} ${CSVFILE} 
+    
     FSFARRAY[${iTASKARRAY}]=${FSFARRAY[${iTASKARRAY}]}_${DIRECTION}
 done
 FSFFILE=$(IFS=@; echo "${FSFARRAY[*]}")
