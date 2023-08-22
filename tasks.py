@@ -1,12 +1,13 @@
-from invoke import task, Collection
-from prompt_toolkit import prompt
-from prompt_toolkit.validation import Validator
 import os
 import re
 import shutil
 import logging
 import pandas as pd
 import sqlite3
+import numpy as np
+from invoke import task, Collection
+from multiprocessing import Process, Queue, cpu_count
+
 
 class HCPDDataDoer:
     class DatabaseManager:
@@ -235,9 +236,11 @@ class HCPDDataDoer:
                 break  # Sentinel value to exit loop
             text_file = item
             status = self.database.update_file(text_file)
-            logger.debug(f"Status: {status} for {text_file}")
+            self.logger.debug(f"Status: {status} for {text_file}")
         
     def extract_parcellated_chunk(self, c, task, chunk, queue):
+        short_task = re.match(r"^(CARIT|GUESSING).*", task)[1]
+        self.logger.debug(f"Chunk shape: {chunk.shape}")
         for _, row in chunk.iterrows():
             pid = row['pid']
             hcp_tasks = row['hcp_task'].split("@")
@@ -246,9 +249,15 @@ class HCPDDataDoer:
 
             for hcp_task in hcp_tasks:
                 d = re.match(".*_(AP|PA)$", hcp_task)[1]
-                l1path = c.l1dir.format(studyfolder = c.studyfolder,
-                                        pid = pid,
-                                        task = f"tfMRI_{short_task}_{d}")
+                self.logger.debug(f"Direction is {d}")
+                try:
+                    l1path = c.l1dir.format(studyfolder = c.studyfolder,
+                                            pid = pid,
+                                            task = f"tfMRI_{short_task}_{d}")
+                    self.logger.debug(f"l1 path is {l1path}")
+                except Exception as e:
+                    self.logger.exception(f"Could not make path: {e}")
+                    
                 parcellated_stats_dir = os.path.join(
                     l1path,
                     f"tfMRI_{task.replace('-', '_')}_{d}_hp200_s4_level1_hp0_clean_ColeAnticevic.feat",
@@ -274,23 +283,22 @@ class HCPDDataDoer:
                     else:
                         self.logger.debug(f"file exists: {text_file}")
     
-    def extract_parcellated_parallel(self, c, task, id_list_files):
-        short_task = re.match(r"^(CARIT|GUESSING).*", task)[1]
+    def extract_parcellated_parallel(self, c, task, id_list_file):
         self.logger.debug(f"SLURM_CPUS_PER_TASK is {os.getenv('SLURM_CPUS_PER_TASK')}")
         NCPU = int(os.getenv('SLURM_CPUS_PER_TASK')) if os.getenv('SLURM_CPUS_PER_TASK') else cpu_count()
         
-        logger.debug(f"Number of CPUs: {NCPU}")
+        self.logger.debug(f"Number of CPUs: {NCPU}")
         if NCPU is None:
             raise ValueError("Cannot determine the number of CPUs")
         
         df_list = []
-        for id_list_file in id_list_files:
-            df_list.append(pd.read_table(id_list_file, sep=" ", header=None, names=["pid", "hcp_task", "fsf"]))
+        for id_file in id_list_file:
+            df_list.append(pd.read_table(id_file, sep=" ", header=None, names=["pid", "hcp_task", "fsf"]))
         id_list = pd.concat(df_list, axis=0)
         
         # Set up a queue for database writes and a process for the database writer
         db_queue = Queue()
-        db_process = Process(target=self.queued_update_file, args=(db_queue))
+        db_process = Process(target=self.queued_update_file, args=(db_queue,))
         db_process.start()
 
         # Split id_list into chunks for each process
@@ -399,12 +407,13 @@ def build_first(c, task: str, parcellated=False, test=False, max_jobs: int = 200
         except Exception as e:
             datadoer.logger.exception(f"Failed to run sbatch job: {e}")
       
-@task(help={'task': 'The task name: [CARIT-PREPOT | CARIT-PREVCOND | GUESSING]', 
+@task(iterable=['id_list_files'],
+      help={'task': 'The task name: [CARIT-PREPOT | CARIT-PREVCOND | GUESSING]', 
             'test': 'Run on a small subset of data', 
             'max_jobs': 'Number of concurrent SLURM jobs to run', 
             'parallel': 'Is this a parallel job? Intended for interal use.', 
             'id_list_file': 'First-level PID list file. Intended for interal use.'}) 
-def extract_parcellated(c, task: str, test=False, max_jobs: int = 200, parallel=False, id_list_file=['id_list_files']):
+def extract_parcellated(c, task: str, test=False, max_jobs: int = 200, parallel=False, id_list_file=[]):
     datadoer = HCPDDataDoer(c)
     VALID_TASKS = ["CARIT-PREPOT", "CARIT-PREVCOND", "GUESSING"]
     if task not in VALID_TASKS:
@@ -412,34 +421,29 @@ def extract_parcellated(c, task: str, test=False, max_jobs: int = 200, parallel=
 
     if parallel:
         try:
-            logger.debug(f"id_list_files = {id_list_files}")
-            datadoer.extract_parcellated_parallel(c, task=task, id_list_files=id_list_files)
+            datadoer.logger.debug(f"id_list_file = {id_list_file}")
+            datadoer.extract_parcellated_parallel(c, task=task, id_list_file=id_list_file)
         except Exception as e:
             datadoer.logger.exception(f"Could not run parallel job: {e}")
     else:
-        id_list_files = [ 
-            f"first_level/{task}-l1-list_{i}run.txt" 
+        id_list_file_args = ' '.join([ 
+            f"--id-list-file \"first_level/{task}-l1-list_{i}run.txt\"" 
             for i in range(1, 3) 
-        ]
-        for id_list_file in id_list_files:
-            id_list = pd.read_table(id_list_file, sep=" ", header=None, names=["pid", "task", "fsf"])
-            nrow = id_list.shape[0]
-            if test:
-                nrow = 0
-            # Batch processing logic using sbatch
-            sbatch_template = f"""
+        ])
+        
+        sbatch_template = f"""
 {c.sbatch_header}
 #SBATCH -c {c.maxcpu}
 . PYTHON_MODULES.txt
 . workbench-1.3.2.txt
 mamba activate hcpl
-invoke extract-parcellated --task {task} --parallel --id-list-file "{id_list_file}"
+invoke extract-parcellated --task {task} --parallel --id-list-file {id_list_file_args}
 EOF
 """
-            cmd = f"sbatch <<EOF {sbatch_template}"
-            datadoer.logger.debug(f"Command:\n\n{cmd}")
-            sbatch_result = c.run(cmd)
-            datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
+        cmd = f"sbatch <<EOF {sbatch_template}"
+        datadoer.logger.debug(f"Command:\n\n{cmd}")
+        sbatch_result = c.run(cmd)
+        datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
 
 ns = Collection(clean, build_first, extract_parcellated)
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})  
