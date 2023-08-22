@@ -1,12 +1,14 @@
-log_level: DEBUG
+log_level: INFO
 log_file: invoke_hcpd-tfMRI.log
+database_file: hcpd_file_status.db
 wb_module_cmd: ". /ncf/mclaughlin/users/jflournoy/code/FSL-6.0.4_workbench-1.3.2.txt"
 studyfolder: "/ncf/hcp/data/HCD-tfMRI-MultiRunFix"
 l1dir: "{studyfolder}/{pid}/MNINonLinear/Results/{task}"
+maxcpu: 42
 sbatch_header: |
     #!/bin/bash
-    #SBATCH -c 1
     #SBATCH -p fasse
-    #SBATCH --mem=2G
+    #SBATCH --mem=8G
     #SBATCH -t 0-5
     #SBATCH -J HCPD
+    #SBATCH -o log/%x-%A.out
