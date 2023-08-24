@@ -4,7 +4,7 @@ database_file: hcpd_file_status.db
 wb_module_cmd: ". /ncf/mclaughlin/users/jflournoy/code/FSL-6.0.4_workbench-1.3.2.txt"
 studyfolder: "/ncf/hcp/data/HCD-tfMRI-MultiRunFix"
 l1dir: "{studyfolder}/{pid}/MNINonLinear/Results/{task}"
-maxcpu: 24
+maxcpu: 26
 sbatch_header: |
     #!/bin/bash
     #SBATCH -p fasse

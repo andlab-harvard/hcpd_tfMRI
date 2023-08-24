@@ -1,30 +1,36 @@
 import os
 import re
 import shutil
+import inspect
 import logging
 import pandas as pd
 import sqlite3
 import numpy as np
+import pyarrow.feather as feather
 from invoke import task, Collection
-from multiprocessing import Process, Queue, cpu_count
+from multiprocessing import Process, Manager, cpu_count
 
 
 class HCPDDataDoer:
     class DatabaseManager:
-        def __init__(self, db_name="file_status.db"):
+        def __init__(self, outerself, db_name="file_status.db"):
+            self.outerself = outerself
             self.db_name = db_name
-            self.timeout = 10
+            self.timeout = 20
             self.setup_database()
 
         def setup_database(self):
-            conn = sqlite3.connect(self.db_name, timeout = self.timeout)
-
+            self.outerself.logger.debug(f"Connecting to {self.db_name}") 
+            conn = sqlite3.connect(self.db_name, timeout=self.timeout)
+            
+            self.outerself.logger.debug(f"Checking if table exists...") 
             # Check if the table exists
-            table_exists = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='files'").fetchone()
+            table_exists = conn.execute("PRAGMA table_info(files)").fetchall()
 
             if table_exists:
+                self.outerself.logger.debug(f"Table exists, checking columns...") 
                 # If the table exists, check its columns
-                columns = [column[1] for column in conn.execute("PRAGMA table_info(files)").fetchall()]
+                columns = [column[1] for column in table_exists]
 
                 # Ensure each column is present, if not, add it
                 expected_columns = ['id', 'filepath', 'status', 'pid', 'session', 'task', 'data_type', 'file_type']
@@ -83,7 +89,21 @@ class HCPDDataDoer:
 
             conn.close()
             return status
+        
+        def get_database(self, task, file_type, data_type):
+            conn = sqlite3.connect(self.db_name)
 
+            df = pd.read_sql_query(f"""
+SELECT * FROM files WHERE 
+file_type IS '{file_type}' AND
+task IS '{task}' AND
+data_type IS '{data_type}'
+""", conn)
+
+            # Close the connection
+            conn.close()
+            return(df)
+        
         def get_file_status(self, filepath):
             file_info = self.get_file_info(filepath)
             if file_info:
@@ -92,7 +112,6 @@ class HCPDDataDoer:
 
         def get_file_info(self, filepath):
             conn = sqlite3.connect(self.db_name, timeout = self.timeout)
-            conn.execute("PRAGMA journal_mode=WAL")
 
             query = f"SELECT * FROM files WHERE filepath='{filepath}'"
             df = pd.read_sql(query, conn)
@@ -117,16 +136,37 @@ class HCPDDataDoer:
 
             return {"pid": pid, "session": session, "task": task, "data_type": data_type, "file_type": file_type}
 
+    manager = None
+    db_queue = None
+    db_condition = None
+    db_processed_events = None
+    logging_queue = None
+
+    @classmethod
+    def _initialize_class_attributes(cls):
+        if cls.manager is None:
+            cls.manager = Manager()
+        if cls.db_queue is None:
+            cls.db_queue = cls.manager.Queue()
+        if cls.db_condition is None:
+            cls.db_condition = cls.manager.Condition()
+        if cls.db_processed_events is None:
+            cls.db_processed_events = cls.manager.dict()
+        if cls.logging_queue is None:
+            cls.logging_queue = cls.manager.Queue()
+    
     def __init__(self, c):
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(levelname)s - %(funcName)s - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S"
         )
+        self._initialize_class_attributes()
         self.logger = self.setup_logging(log_file = c.log_file, log_level = c.log_level)
-        self.database = self.DatabaseManager(c.database_file)
-        pass
-    
+        self.logger.debug(f"Logger started, setting up database")
+        self.database = self.DatabaseManager(outerself=self, db_name=c.database_file)
+        self.logger.debug(f"Data Doer Initialized!")
+
     def setup_logging(self, log_file: str = None, log_level: str ='INFO'):
         logger = logging.getLogger(__name__)
         if logger.hasHandlers(): 
@@ -149,6 +189,43 @@ class HCPDDataDoer:
             logger.addHandler(log_console_handler)
         return logger
 
+    def log_msg(self, msg, level):
+        HCPDDataDoer.logging_queue.put((f"{inspect.stack()[1].function} - {msg}", level))
+    
+    def logging_process(self):
+        while True:
+            record = HCPDDataDoer.logging_queue.get()
+            if record == 'terminate':
+                break
+            message, level_name = record
+            log_method = getattr(self.logger, level_name)
+            log_method(message)
+            
+    def queued_update_file(self):
+        while True:
+            with HCPDDataDoer.db_condition:
+                while HCPDDataDoer.db_queue.empty():
+                    HCPDDataDoer.db_condition.wait()
+                item = HCPDDataDoer.db_queue.get()
+                
+            if item is None:
+                break  # Sentinel value to exit loop
+            text_file = item
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    status = self.database.update_file(text_file)
+                    self.log_msg(f"Status: {status} for {text_file}", 'debug')
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        time.sleep(5)  # wait for 5 seconds before retrying
+                    else:
+                        self.log_msg(f"Could not update {text_file}: {e}", 'exception')
+   
+            with HCPDDataDoer.db_condition:
+                HCPDDataDoer.db_processed_events[item].set()
+      
     def remove_task_files(self, targetdir: str, task: str, hcdsession: str = None):
         """
         Remove specific task files in a given directory.
@@ -228,62 +305,74 @@ class HCPDDataDoer:
                             self.logger.debug(f"Removed file: {afsf}")
                         except Exception as e:
                             self.logger.exception("An exception occurred: %s", e)
-
-    def queued_update_file(self, queue):
-        while True:
-            item = queue.get()
-            if item is None:
-                break  # Sentinel value to exit loop
-            text_file = item
-            status = self.database.update_file(text_file)
-            self.logger.debug(f"Status: {status} for {text_file}")
         
-    def extract_parcellated_chunk(self, c, task, chunk, queue):
+    def extract_parcellated_chunk(self, c, task, chunk, chunk_i):
         short_task = re.match(r"^(CARIT|GUESSING).*", task)[1]
-        self.logger.debug(f"Chunk shape: {chunk.shape}")
-        for _, row in chunk.iterrows():
+        self.log_msg(f"Chunk {chunk_i} shape: {chunk.shape}", 'info')
+        for index, row in chunk.iterrows():
             pid = row['pid']
             hcp_tasks = row['hcp_task'].split("@")
 
-            self.logger.info(f"Extracting data for {pid}: {hcp_tasks}")
+            self.log_msg(f"Extracting data for {pid}, index {index} in chunk {chunk_i}: {hcp_tasks}", 'info')
 
             for hcp_task in hcp_tasks:
                 d = re.match(".*_(AP|PA)$", hcp_task)[1]
-                self.logger.debug(f"Direction is {d}")
+                self.log_msg(f"Direction is {d}", 'debug')
                 try:
                     l1path = c.l1dir.format(studyfolder = c.studyfolder,
                                             pid = pid,
                                             task = f"tfMRI_{short_task}_{d}")
-                    self.logger.debug(f"l1 path is {l1path}")
+                    self.log_msg(f"l1 path is {l1path}", 'debug')
                 except Exception as e:
-                    self.logger.exception(f"Could not make path: {e}")
+                    self.log_msg(f"Could not make path: {e}", 'exception')
                     
                 parcellated_stats_dir = os.path.join(
                     l1path,
                     f"tfMRI_{task.replace('-', '_')}_{d}_hp200_s4_level1_hp0_clean_ColeAnticevic.feat",
                     "ParcellatedStats"
                 )
+                try:
+                    self.log_msg(f"parcellated_stats_dir is {parcellated_stats_dir}", 'debug')
+                    cope_files = [
+                        f for f 
+                        in os.listdir(parcellated_stats_dir) 
+                        if re.match("cope\d{1,2}.ptseries.nii", f)
+                    ]
+                    for cope in cope_files:
+                        text_file = os.path.join(parcellated_stats_dir, re.sub(r"\.nii$", ".txt", cope))
 
-                self.logger.debug(f"parcellated_stats_dir is {parcellated_stats_dir}")
-                cope_files = [
-                    f for f 
-                    in os.listdir(parcellated_stats_dir) 
-                    if re.match("cope\d{1,2}.ptseries.nii", f)
-                ]
-                for cope in cope_files:
-                    text_file = os.path.join(parcellated_stats_dir, re.sub(r"\.nii$", ".txt", cope))
-                    status = self.database.update_file(text_file)
-                    if status == 'missing':
-                        cope_file = os.path.join(parcellated_stats_dir, cope)
-                        cmd = f"wb_command -cifti-convert -to-text {cope_file} {text_file}"
-                        self.logger.debug(f"command is {cmd}")
-                        wb_command = c.run(cmd)
-                        self.logger.debug(f"wb_command: {wb_command}")
-                        queue.put(text_file)
-                    else:
-                        self.logger.debug(f"file exists: {text_file}")
+                        with HCPDDataDoer.db_condition:
+                            event_for_text_file = HCPDDataDoer.manager.Event()
+                            HCPDDataDoer.db_processed_events[text_file] = event_for_text_file
+
+                            HCPDDataDoer.db_queue.put(text_file) 
+                            HCPDDataDoer.db_condition.notify_all()
+
+                        event_for_text_file.wait()
+                        status = self.database.get_file_status(text_file)
+
+                        if not status:
+                            raise ValueError('File status should not be None. Database update issue likely')
+                        elif status == 'missing':
+                            cope_file = os.path.join(parcellated_stats_dir, cope)
+                            cmd = f"wb_command -cifti-convert -to-text {cope_file} {text_file}"
+                            self.log_msg(f"command is {cmd}", 'debug')
+                            wb_command = c.run(cmd)
+                            self.log_msg(f"wb_command: {wb_command}", 'debug')
+                            with HCPDDataDoer.db_condition:
+                                HCPDDataDoer.db_queue.put(text_file)
+                                HCPDDataDoer.db_condition.notify_all()
+                        else:
+                            self.log_msg(f"file exists: {text_file}", 'debug')
+
+                        with HCPDDataDoer.db_condition:
+                            del HCPDDataDoer.db_processed_events[text_file]
+                except Exception as e:
+                    self.log_msg(f"Could not extract data for {pid} {hcp_task}: {e}")
+            self.log_msg(f"Done with {pid}", 'info')
+        self.log_msg(f"Done with chunk {chunk_i}", 'info')
     
-    def extract_parcellated_parallel(self, c, task, id_list_file):
+    def extract_parcellated_parallel(self, c, task, id_list_file, test):
         self.logger.debug(f"SLURM_CPUS_PER_TASK is {os.getenv('SLURM_CPUS_PER_TASK')}")
         NCPU = int(os.getenv('SLURM_CPUS_PER_TASK')) if os.getenv('SLURM_CPUS_PER_TASK') else cpu_count()
         
@@ -295,30 +384,151 @@ class HCPDDataDoer:
         for id_file in id_list_file:
             df_list.append(pd.read_table(id_file, sep=" ", header=None, names=["pid", "hcp_task", "fsf"]))
         id_list = pd.concat(df_list, axis=0)
+        id_list_rows = id_list.shape[0]
+        self.logger.info(f"ID List df has shape: {id_list.shape}")
         
-        # Set up a queue for database writes and a process for the database writer
-        db_queue = Queue()
-        db_process = Process(target=self.queued_update_file, args=(db_queue,))
+        logging_p = Process(target=self.logging_process)
+        logging_p.start()
+        
+        db_process = Process(target=self.queued_update_file)
         db_process.start()
 
         # Split id_list into chunks for each process
-        chunks = np.array_split(id_list, NCPU)
+        if test is True:
+            id_list = id_list.iloc[range(0, NCPU-3),:]
+        chunks = np.array_split(id_list, NCPU - 3)
+        
+        self.log_msg(f"Running {len(chunks)} processes.", 'info')
         
         processes = []
-        for chunk in chunks:
-            p = Process(target=self.extract_parcellated_chunk, args=(c, task, chunk, db_queue))
+        for i, chunk in enumerate(chunks):
+            p = Process(target=self.extract_parcellated_chunk, args=(c, task, chunk, i))
             processes.append(p)
             p.start()
 
         # Wait for all processes to finish
         for p in processes:
             p.join()
-
-        # Signal the database writer to finish and wait for it
-        db_queue.put(None)
+        
+        HCPDDataDoer.logging_queue.put('terminate')
+        logging_p.join()
+        
+        with HCPDDataDoer.db_condition:
+            HCPDDataDoer.db_queue.put(None)
+            HCPDDataDoer.db_condition.notify_all()
         db_process.join()
-
+        
         self.logger.info("All data extracted!")
+        
+        db_df = self.database.get_database('GUESSING', 'txt', 'Parcellated')
+        db_pid_sess_rows = db_df.loc[:, ['pid', 'session']].drop_duplicates().shape[0]
+        if db_pid_sess_rows != id_list_rows:
+            self.logger.warning(f"Database sessions not equal to ID list sessions: {db_pid_sess_rows} v {id_list_rows}")
+        
+    def combine_parcellated_data_chunk(self, chunk):
+        dataframes_list = []
+        try:
+            this_f_name = self.get_caller_function_name()
+        except Exception as e:
+            self.logger.exception(f"Could not get function name: {e}")
+            
+        self.log_msg(f"{this_f_name} - Combining data for {chunk.shape[0]} files", 'debug')
+        for _, row in chunk.iterrows():
+            self.log_msg(f"{this_f_name} - reading file: {row['filepath']}", 'debug')
+            try:
+                df_temp = pd.read_table(row['filepath'], sep = " ", header=None, names=["value"])
+            except Exception as e:
+                self.log_msg(f"{this_f_name} - Could not read file: {e}", 'debug')
+
+            self.log_msg(f"{this_f_name} - Copying columns", 'debug')
+            for col in chunk.columns:
+                df_temp[col] = row[col]
+
+            # Add this dataframe to the list
+            dataframes_list.append(df_temp)
+
+        # Concatenate all dataframes in the list at once
+        if len(dataframes_list) == 1:
+            parcellated_data = dataframes_list[0]
+        else:
+            parcellated_data = pd.concat(dataframes_list, ignore_index=True)
+            
+        try:
+            HCPDDataDoer.pdata_queue.put(parcellated_data, block = False)
+        except Exception as e:
+            self.log_msg(f"{this_f_name} - Queue full: {e}", 'debug')
+        finally:
+            self.log_msg(f"{this_f_name} - Resulting data has {parcellated_data.shape[0]} rows", 'debug')
+    
+    def combine_parcellated_data(self, c, task, test):
+        save_file = f"parcellated-data_{task}.feather"
+        self.logger.debug(f"SLURM_CPUS_PER_TASK is {os.getenv('SLURM_CPUS_PER_TASK')}")
+        NCPU = int(os.getenv('SLURM_CPUS_PER_TASK')) if os.getenv('SLURM_CPUS_PER_TASK') else cpu_count()
+        
+        self.logger.debug(f"Number of CPUs: {NCPU}")
+        if NCPU is None:
+            raise ValueError("Cannot determine the number of CPUs")
+        
+        conn = sqlite3.connect(self.database.db_name)
+
+        # Query the database to load the entire 'files' table into a DataFrame
+        text_file_df = pd.read_sql_query(f"""
+SELECT * FROM files WHERE 
+file_type IS 'txt' AND
+task IS '{task}' AND
+data_type IS 'Parcellated'
+""", conn)
+
+        # Close the connection
+        conn.close()
+
+        if (text_file_df.shape[0] == 0  
+            or not all(text_file_df.status == 'built')
+            or any(text_file_df.status == 'missing')):
+            #ensure everything expected to be built has been built.
+            self.logger.exception(f"No data: {text_file_df.shape[0] == 0}")
+            self.logger.exception(f"Not all built: {not all(text_file_df.status == 'built')}")
+            self.logger.exception(f"Any missing: {any(text_file_df.status == 'missing')}")
+            raise ValueError(f"Data is not all extracted. Please rerun `invoke extract-parcellated-parallel --task {task}` and check output")
+        
+        if test:
+            text_file_df = text_file_df.iloc[0:NCPU]
+        
+        # Split id_list into chunks for each process
+        chunks = np.array_split(text_file_df, NCPU - 2) #one main and one logging process
+                
+        logging_p = Process(target=self.logging_process)
+        logging_p.start()
+        
+        self.log_msg(f"Running all processes...", 'debug')
+        processes = []
+        for chunk in chunks:
+            p = Process(target=self.combine_parcellated_data_chunk, args=(chunk))
+            processes.append(p)
+            p.start()
+        self.log_msg(f"Processes running...", 'debug')
+
+        for p in processes:
+            p.join()
+        
+        HCPDDataDoer.logging_queue.put('terminate')
+        logging_p.join()
+        
+        self.logger.debug(f"Processes finished.")
+        
+        results = []
+        self.logger.debug(f"Collecing results...")
+        while not HCPDDataDoer.pdata_queue.empty():
+            results.append(HCPDDataDoer.pdata_queue.get())
+        
+        self.logger.debug(f"Concatenating resulting list of length: {len(results)}")
+        parcellated_data = pd.concat(results, ignore_index=True)
+        self.logger.debug(f"parcellated_data shape: {parcellated_data.shape}")
+        try:
+            feather.write_feather(parcellated_data, save_file)
+            self.logger.info(f"All data combined and saved to {save_file}!")
+        except Exception as e:
+            self.logger.exception(f"Failed to save feather")
         
 @task
 def clean(c, task: str, targetdir: str = "/ncf/hcp/data/HCD-tfMRI-MultiRunFix/", hcdsession: str = None):
@@ -409,11 +619,9 @@ def build_first(c, task: str, parcellated=False, test=False, max_jobs: int = 200
       
 @task(iterable=['id_list_files'],
       help={'task': 'The task name: [CARIT-PREPOT | CARIT-PREVCOND | GUESSING]', 
-            'test': 'Run on a small subset of data', 
-            'max_jobs': 'Number of concurrent SLURM jobs to run', 
             'parallel': 'Is this a parallel job? Intended for interal use.', 
             'id_list_file': 'First-level PID list file. Intended for interal use.'}) 
-def extract_parcellated(c, task: str, test=False, max_jobs: int = 200, parallel=False, id_list_file=[]):
+def extract_parcellated(c, task: str, parallel=False, id_list_file=[], test=False):
     datadoer = HCPDDataDoer(c)
     VALID_TASKS = ["CARIT-PREPOT", "CARIT-PREVCOND", "GUESSING"]
     if task not in VALID_TASKS:
@@ -422,7 +630,7 @@ def extract_parcellated(c, task: str, test=False, max_jobs: int = 200, parallel=
     if parallel:
         try:
             datadoer.logger.debug(f"id_list_file = {id_list_file}")
-            datadoer.extract_parcellated_parallel(c, task=task, id_list_file=id_list_file)
+            datadoer.extract_parcellated_parallel(c, task=task, id_list_file=id_list_file, test=test)
         except Exception as e:
             datadoer.logger.exception(f"Could not run parallel job: {e}")
     else:
@@ -431,13 +639,18 @@ def extract_parcellated(c, task: str, test=False, max_jobs: int = 200, parallel=
             for i in range(1, 3) 
         ])
         
+        test_flag = ""
+        if test is True:
+            test_flag = " --test"
+        invoke_parallel_cmd = f"invoke extract-parcellated --task {task} --parallel {id_list_file_args}{test_flag}"
+        
         sbatch_template = f"""
 {c.sbatch_header}
 #SBATCH -c {c.maxcpu}
 . PYTHON_MODULES.txt
 . workbench-1.3.2.txt
 mamba activate hcpl
-invoke extract-parcellated --task {task} --parallel --id-list-file {id_list_file_args}
+{invoke_parallel_cmd}
 EOF
 """
         cmd = f"sbatch <<EOF {sbatch_template}"
@@ -445,5 +658,32 @@ EOF
         sbatch_result = c.run(cmd)
         datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
 
-ns = Collection(clean, build_first, extract_parcellated)
-ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})  
+@task
+def combine_parcellated_data(c, task: str, parallel=False, test=False):
+    datadoer = HCPDDataDoer(c)
+    VALID_TASKS = ["CARIT-PREPOT", "CARIT-PREVCOND", "GUESSING"]
+    if task not in VALID_TASKS:
+        raise ValueError(f"Task is misspecified: Please provide a valid task. Valid tasks are {VALID_TASKS}")
+    if parallel:
+        try:
+            datadoer.combine_parcellated_data(c, task=task, test=test)
+        except Exception as e:
+            datadoer.logger.exception(f"Could not run parallel job: {e}")
+    else:
+        sbatch_template = f"""
+{c.sbatch_header}
+#SBATCH -c {c.maxcpu}
+. PYTHON_MODULES.txt
+. workbench-1.3.2.txt
+mamba activate hcpl
+invoke combine-parcellated-data --task {task} --parallel
+EOF
+"""
+        cmd = f"sbatch <<EOF {sbatch_template}"
+        datadoer.logger.debug(f"Command:\n\n{cmd}")
+        sbatch_result = c.run(cmd)
+        datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
+
+
+ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data)
+ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})
