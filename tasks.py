@@ -449,8 +449,16 @@ data_type IS '{data_type}'
         if db_pid_sess_rows != id_list_rows:
             self.logger.warning(f"Database sessions not equal to ID list sessions: {db_pid_sess_rows} v {id_list_rows}")
         
+    def parse_parcellated_text_file_name(self, filename):
+        filename_re = r'.*(?P<id>HCD.*)_(?P<session>V[123])_\w+.*tfMRI_.*tfMRI_(?P<scan>.*)_(?P<direction>AP|PA).*(?P<file>cope.*)\..*series\.txt'
+        match = re.match(filename_re, filename)
+        
+        if not match:
+            return {"id": None, "session": None, "scan": None, "direction": None, "file": None}
+    
+        return match.groupdict()
+    
     def combine_parcellated_data_chunk(self, chunk):
-        self.log_msg('Hi.', 'debug')
         dataframes_list = []
             
         self.log_msg(f"Combining data for {chunk.shape[0]} files", 'info')
@@ -461,10 +469,16 @@ data_type IS '{data_type}'
             except Exception as e:
                 self.log_msg(f"Could not read file: {e}", 'debug')
 
-            self.log_msg(f"Copying columns", 'debug')
-            for col in chunk.columns:
-                df_temp[col] = row[col]
-
+            self.log_msg(f"Parsing file name to add extra information to data table...", 'debug')
+            
+            try:
+                filename_match_data = self.parse_parcellated_text_file_name(row['filepath'])
+            except Exception as e:
+                self.log_msg(f"Could not parse text file name: {e}", 'exception')
+            
+            for col, value in filename_match_data.items():
+                df_temp[col] = value
+            
             dataframes_list.append(df_temp)
 
         if len(dataframes_list) == 1:
@@ -696,13 +710,17 @@ def combine_parcellated_data(c, task: str, parallel=False, test=False):
         except Exception as e:
             datadoer.logger.exception(f"Could not run parallel job: {e}")
     else:
+        test_flag = ""
+        if test is True:
+            test_flag = " --test"
+        invoke_parallel_cmd = f"invoke combine-parcellated-data --task {task} --parallel{test_flag}"
         sbatch_template = f"""
 {c.sbatch_header}
 #SBATCH -c {c.maxcpu}
 . PYTHON_MODULES.txt
 . workbench-1.3.2.txt
 mamba activate hcpl
-invoke combine-parcellated-data --task {task} --parallel
+{invoke_parallel_cmd}
 EOF
 """
         cmd = f"sbatch <<EOF {sbatch_template}"

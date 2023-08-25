@@ -1,4 +1,5 @@
-load_hcpd_data <- function(task = 'carit', nthreads = 1){
+load_hcpd_data <- function(task = 'GUESSING', nthreads = 4){
+  if !task %in% c('GUESSING', 'CARIT_PREPOT', 'CARIT_PREVCOND')
   require(data.table)
   
   setDTthreads(nthreads)
@@ -12,37 +13,30 @@ load_hcpd_data <- function(task = 'carit', nthreads = 1){
   
   message(sprintf('Retrieving %s data...', task))
   if(!file.exists(fname)){
-    message('RDS data not found, loading from csv (and saving result as RDS for future speedup)')
+    message('RDS data not found, loading from feather (and saving result as RDS for future speedup)')
     require(stringi)
-    roi_data <- fread(file = file.path(fname_dir, 'roi_data.csv'),
-                      sep = ',',
-                      quote = '',
-                      header = TRUE,
-                      stringsAsFactors = FALSE,
-                      strip.white = FALSE,
-                      fill = FALSE,
-                      skip = 0,
-                      check.names = FALSE,
-                      col.names = c('id', 'scan', 'file', 'value'),
-                      select = list(character = c('id', 'scan', 'file'), numeric = 'value'),
-                      verbose = TRUE,
-                      na.strings = "NA",
-                      key = c('id', 'scan'),
-                      showProgress = TRUE, 
-                      data.table = TRUE)
+    require(arrow)
+    if(grepl('group_level_roi', getwd())){
+      arrow_fname_dir <-  '..'
+    } else {
+      arrow_fname_dir <-  '.'
+    }
     
-    roi_data[, roi := 1:.N, by = c('id', 'scan', 'file')]
+    roi_data <- as.data.table(
+      read_feather(
+        file.path(arrow_fname_dir, 'parcellated-data_GUESSING.feather')))
+    roi_data[, roi := 1:.N, by = c('id', 'session', 'scan', 'direction', 'file')]
     
-    roi_data[, direction := stringi::stri_sub(scan, from = -2, length = 2)]
+    message(sprintf('Object size is %s', format(object.size(roi_data), units = 'MB')))
     
-    scan_names <- sprintf('tfMRI_%s_%s', toupper(task), c('AP', 'PA'))
-    
-    roi_data_scans <- roi_data[scan %in% scan_names]
+    roi_data_scans <- roi_data[scan %in% task]
     rm(roi_data)
     roi_data_scans_w <- dcast(roi_data_scans, ... ~ file, value.var = 'value')
     rm(roi_data_scans)
     
     roi_data_scans_w[, scan := NULL]
+    
+    message(sprintf('Final object size is %s', format(object.size(roi_data_scans_w), units = 'MB')))
     
     saveRDS(roi_data_scans_w, file = fname, compress = TRUE)
   } else {

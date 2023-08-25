@@ -8,7 +8,7 @@ maxcpu: 26
 sbatch_header: |
     #!/bin/bash
     #SBATCH -p fasse
-    #SBATCH --mem=8G
+    #SBATCH --mem=16G
     #SBATCH -t 0-5
     #SBATCH -J HCPD
     #SBATCH -o log/%x-%A.out
