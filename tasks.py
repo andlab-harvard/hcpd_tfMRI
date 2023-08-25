@@ -309,67 +309,70 @@ data_type IS '{data_type}'
     def extract_parcellated_chunk(self, c, task, chunk, chunk_i):
         short_task = re.match(r"^(CARIT|GUESSING).*", task)[1]
         self.log_msg(f"Chunk {chunk_i} shape: {chunk.shape}", 'info')
+        self.log_msg(f"Chunk {chunk_i}, Number of rows for HCD2562658_V1_MR: {len(chunk[chunk.pid == 'HCD2562658_V1_MR'])}", 'info')
         for index, row in chunk.iterrows():
             pid = row['pid']
             hcp_tasks = row['hcp_task'].split("@")
 
             self.log_msg(f"Extracting data for {pid}, index {index} in chunk {chunk_i}: {hcp_tasks}", 'info')
+            try:
+                for hcp_task in hcp_tasks:
+                    d = re.match(".*_(AP|PA)$", hcp_task)[1]
+                    self.log_msg(f"Direction is {d}", 'debug')
+                    try:
+                        l1path = c.l1dir.format(studyfolder = c.studyfolder,
+                                                pid = pid,
+                                                task = f"tfMRI_{short_task}_{d}")
+                        self.log_msg(f"l1 path is {l1path}", 'debug')
+                    except Exception as e:
+                        self.log_msg(f"Could not make path: {e}", 'exception')
 
-            for hcp_task in hcp_tasks:
-                d = re.match(".*_(AP|PA)$", hcp_task)[1]
-                self.log_msg(f"Direction is {d}", 'debug')
-                try:
-                    l1path = c.l1dir.format(studyfolder = c.studyfolder,
-                                            pid = pid,
-                                            task = f"tfMRI_{short_task}_{d}")
-                    self.log_msg(f"l1 path is {l1path}", 'debug')
-                except Exception as e:
-                    self.log_msg(f"Could not make path: {e}", 'exception')
-                    
-                parcellated_stats_dir = os.path.join(
-                    l1path,
-                    f"tfMRI_{task.replace('-', '_')}_{d}_hp200_s4_level1_hp0_clean_ColeAnticevic.feat",
-                    "ParcellatedStats"
-                )
-                try:
-                    self.log_msg(f"parcellated_stats_dir is {parcellated_stats_dir}", 'debug')
-                    cope_files = [
-                        f for f 
-                        in os.listdir(parcellated_stats_dir) 
-                        if re.match("cope\d{1,2}.ptseries.nii", f)
-                    ]
-                    for cope in cope_files:
-                        text_file = os.path.join(parcellated_stats_dir, re.sub(r"\.nii$", ".txt", cope))
+                    parcellated_stats_dir = os.path.join(
+                        l1path,
+                        f"tfMRI_{task.replace('-', '_')}_{d}_hp200_s4_level1_hp0_clean_ColeAnticevic.feat",
+                        "ParcellatedStats"
+                    )
+                    try:
+                        self.log_msg(f"parcellated_stats_dir is {parcellated_stats_dir}", 'debug')
+                        cope_files = [
+                            f for f 
+                            in os.listdir(parcellated_stats_dir) 
+                            if re.match("cope\d{1,2}.ptseries.nii", f)
+                        ]
+                        for cope in cope_files:
+                            text_file = os.path.join(parcellated_stats_dir, re.sub(r"\.nii$", ".txt", cope))
 
-                        with HCPDDataDoer.db_condition:
-                            event_for_text_file = HCPDDataDoer.manager.Event()
-                            HCPDDataDoer.db_processed_events[text_file] = event_for_text_file
-
-                            HCPDDataDoer.db_queue.put(text_file) 
-                            HCPDDataDoer.db_condition.notify_all()
-
-                        event_for_text_file.wait()
-                        status = self.database.get_file_status(text_file)
-
-                        if not status:
-                            raise ValueError('File status should not be None. Database update issue likely')
-                        elif status == 'missing':
-                            cope_file = os.path.join(parcellated_stats_dir, cope)
-                            cmd = f"wb_command -cifti-convert -to-text {cope_file} {text_file}"
-                            self.log_msg(f"command is {cmd}", 'debug')
-                            wb_command = c.run(cmd)
-                            self.log_msg(f"wb_command: {wb_command}", 'debug')
                             with HCPDDataDoer.db_condition:
-                                HCPDDataDoer.db_queue.put(text_file)
-                                HCPDDataDoer.db_condition.notify_all()
-                        else:
-                            self.log_msg(f"file exists: {text_file}", 'debug')
+                                event_for_text_file = HCPDDataDoer.manager.Event()
+                                HCPDDataDoer.db_processed_events[text_file] = event_for_text_file
 
-                        with HCPDDataDoer.db_condition:
-                            del HCPDDataDoer.db_processed_events[text_file]
-                except Exception as e:
-                    self.log_msg(f"Could not extract data for {pid} {hcp_task}: {e}")
-            self.log_msg(f"Done with {pid}", 'info')
+                                HCPDDataDoer.db_queue.put(text_file) 
+                                HCPDDataDoer.db_condition.notify_all()
+
+                            event_for_text_file.wait()
+                            status = self.database.get_file_status(text_file)
+
+                            if not status:
+                                raise ValueError('File status should not be None. Database update issue likely')
+                            elif status == 'missing':
+                                cope_file = os.path.join(parcellated_stats_dir, cope)
+                                cmd = f"wb_command -cifti-convert -to-text {cope_file} {text_file}"
+                                self.log_msg(f"command is {cmd}", 'debug')
+                                wb_command = c.run(cmd)
+                                self.log_msg(f"wb_command: {wb_command}", 'debug')
+                                with HCPDDataDoer.db_condition:
+                                    HCPDDataDoer.db_queue.put(text_file)
+                                    HCPDDataDoer.db_condition.notify_all()
+                            else:
+                                self.log_msg(f"file exists: {text_file}", 'debug')
+
+                            with HCPDDataDoer.db_condition:
+                                del HCPDDataDoer.db_processed_events[text_file]
+                    except Exception as e:
+                        self.log_msg(f"Could not extract data for {pid} {hcp_task}: {e}", 'exception')
+                self.log_msg(f"Done with {pid}", 'info')
+            except Exception as e:
+                self.log_msg(f"Failed to extract data for {pid}: {e}", 'exception')
         self.log_msg(f"Done with chunk {chunk_i}", 'info')
     
     def extract_parcellated_parallel(self, c, task, id_list_file, test):
@@ -386,6 +389,8 @@ data_type IS '{data_type}'
         id_list = pd.concat(df_list, axis=0)
         id_list_rows = id_list.shape[0]
         self.logger.info(f"ID List df has shape: {id_list.shape}")
+        self.logger.info(f"Number of rows for HCD2562658_V1_MR: {len(id_list[id_list.pid == 'HCD2562658_V1_MR'])}")
+        
         
         logging_p = Process(target=self.logging_process)
         logging_p.start()
@@ -654,7 +659,8 @@ mamba activate hcpl
 EOF
 """
         cmd = f"sbatch <<EOF {sbatch_template}"
-        datadoer.logger.debug(f"Command:\n\n{cmd}")
+        datadoer.logger.debug(f"Sbatch Command:\n\n{cmd}")
+        datadoer.logger.info(f"Invoke Command:\n\n{invoke_parallel_cmd}")
         sbatch_result = c.run(cmd)
         datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
 
