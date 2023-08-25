@@ -13,48 +13,64 @@ from multiprocessing import Process, Manager, cpu_count
 
 class HCPDDataDoer:
     class DatabaseManager:
+        """
+        Manages interactions and configurations with a SQLite3 database.
+
+        Attributes:
+            outerself: An external class instance to connect to HCPDDataDoer.
+            db_name (str): The name of the SQLite3 database.
+            timeout (int): The time, in seconds, to wait before raising a timeout error when connecting to the database.
+        """
+        
         def __init__(self, outerself, db_name="file_status.db"):
+            """
+            Initializes the DatabaseManager with provided parameters.
+
+            Args:
+                outerself: Reference to an instance from an external class, HCPDDataDoer.
+                db_name (str, optional): Name of the SQLite3 database file. Defaults to 'file_status.db'.
+            """
             self.outerself = outerself
             self.db_name = db_name
             self.timeout = 20
             self.setup_database()
 
         def setup_database(self):
+            """
+            Sets up the SQLite3 database, creating necessary tables and columns if they do not exist.
+            """
             self.outerself.logger.debug(f"Connecting to {self.db_name}") 
-            conn = sqlite3.connect(self.db_name, timeout=self.timeout)
+            with sqlite3.connect(self.db_name, timeout=self.timeout) as conn:
             
-            self.outerself.logger.debug(f"Checking if table exists...") 
-            # Check if the table exists
-            table_exists = conn.execute("PRAGMA table_info(files)").fetchall()
+                self.outerself.logger.debug(f"Checking if table exists...") 
+                table_exists = conn.execute("PRAGMA table_info(files)").fetchall()
 
-            if table_exists:
-                self.outerself.logger.debug(f"Table exists, checking columns...") 
-                # If the table exists, check its columns
-                columns = [column[1] for column in table_exists]
+                if table_exists:
+                    self.outerself.logger.debug(f"Table exists, checking columns...") 
+                    columns = {column[1] for column in table_exists}
 
-                # Ensure each column is present, if not, add it
-                expected_columns = ['id', 'filepath', 'status', 'pid', 'session', 'task', 'data_type', 'file_type']
-                for col in expected_columns:
-                    if col not in columns:
+                    # Compare current columns with expected columns and add any that are missing
+                    expected_columns = {'id', 'filepath', 'status', 'pid', 'session', 'task', 'data_type', 'file_type'}
+                    missing_columns = expected_columns - columns
+                    for col in missing_columns:
                         conn.execute(f"ALTER TABLE files ADD COLUMN {col}")
                         conn.commit()
-            else:
-                # If the table doesn't exist, create it with all columns
-                conn.execute('''
-                CREATE TABLE files (
-                    id INTEGER PRIMARY KEY,
-                    filepath TEXT NOT NULL UNIQUE,
-                    status TEXT NOT NULL,
-                    pid TEXT,
-                    session TEXT,
-                    task TEXT,
-                    data_type TEXT,
-                    file_type TEXT
-                )
-                ''')
-                conn.commit()
+                else:
+                    # Create the 'files' table if it doesn't already exist
+                    conn.execute('''
+                    CREATE TABLE files (
+                        id INTEGER PRIMARY KEY,
+                        filepath TEXT NOT NULL UNIQUE,
+                        status TEXT NOT NULL,
+                        pid TEXT,
+                        session TEXT,
+                        task TEXT,
+                        data_type TEXT,
+                        file_type TEXT
+                    )
+                    ''')
+                    conn.commit()
 
-            conn.close()
 
         def update_file(self, filepath):
             status = 'built' if os.path.exists(filepath) else 'missing'
@@ -141,6 +157,7 @@ data_type IS '{data_type}'
     db_condition = None
     db_processed_events = None
     logging_queue = None
+    pdata_queue = None
 
     @classmethod
     def _initialize_class_attributes(cls):
@@ -154,6 +171,8 @@ data_type IS '{data_type}'
             cls.db_processed_events = cls.manager.dict()
         if cls.logging_queue is None:
             cls.logging_queue = cls.manager.Queue()
+        if cls.pdata_queue is None:
+            cls.pdata_queue = cls.manager.Queue()
     
     def __init__(self, c):
         logging.basicConfig(
@@ -431,28 +450,23 @@ data_type IS '{data_type}'
             self.logger.warning(f"Database sessions not equal to ID list sessions: {db_pid_sess_rows} v {id_list_rows}")
         
     def combine_parcellated_data_chunk(self, chunk):
+        self.log_msg('Hi.', 'debug')
         dataframes_list = []
-        try:
-            this_f_name = self.get_caller_function_name()
-        except Exception as e:
-            self.logger.exception(f"Could not get function name: {e}")
             
-        self.log_msg(f"{this_f_name} - Combining data for {chunk.shape[0]} files", 'debug')
+        self.log_msg(f"Combining data for {chunk.shape[0]} files", 'info')
         for _, row in chunk.iterrows():
-            self.log_msg(f"{this_f_name} - reading file: {row['filepath']}", 'debug')
+            self.log_msg(f"reading file: {row['filepath']}", 'debug')
             try:
                 df_temp = pd.read_table(row['filepath'], sep = " ", header=None, names=["value"])
             except Exception as e:
-                self.log_msg(f"{this_f_name} - Could not read file: {e}", 'debug')
+                self.log_msg(f"Could not read file: {e}", 'debug')
 
-            self.log_msg(f"{this_f_name} - Copying columns", 'debug')
+            self.log_msg(f"Copying columns", 'debug')
             for col in chunk.columns:
                 df_temp[col] = row[col]
 
-            # Add this dataframe to the list
             dataframes_list.append(df_temp)
 
-        # Concatenate all dataframes in the list at once
         if len(dataframes_list) == 1:
             parcellated_data = dataframes_list[0]
         else:
@@ -461,9 +475,9 @@ data_type IS '{data_type}'
         try:
             HCPDDataDoer.pdata_queue.put(parcellated_data, block = False)
         except Exception as e:
-            self.log_msg(f"{this_f_name} - Queue full: {e}", 'debug')
+            self.log_msg(f"Queue full: {e}", 'exception')
         finally:
-            self.log_msg(f"{this_f_name} - Resulting data has {parcellated_data.shape[0]} rows", 'debug')
+            self.log_msg(f"Resulting data chunk has {parcellated_data.shape[0]} rows", 'info')
     
     def combine_parcellated_data(self, c, task, test):
         save_file = f"parcellated-data_{task}.feather"
@@ -497,7 +511,7 @@ data_type IS 'Parcellated'
             raise ValueError(f"Data is not all extracted. Please rerun `invoke extract-parcellated-parallel --task {task}` and check output")
         
         if test:
-            text_file_df = text_file_df.iloc[0:NCPU]
+            text_file_df = text_file_df.iloc[range(0, NCPU - 2)]
         
         # Split id_list into chunks for each process
         chunks = np.array_split(text_file_df, NCPU - 2) #one main and one logging process
@@ -508,13 +522,19 @@ data_type IS 'Parcellated'
         self.log_msg(f"Running all processes...", 'debug')
         processes = []
         for chunk in chunks:
-            p = Process(target=self.combine_parcellated_data_chunk, args=(chunk))
-            processes.append(p)
-            p.start()
+            self.log_msg(f"Sending chunk with shape {chunk.shape} to worker", 'debug')
+            try:
+                p = Process(target=self.combine_parcellated_data_chunk, args=(chunk,))
+                processes.append(p)
+                p.start()
+            except Exception as e:
+                self.log_msg(f"Failed to start process: {e}", 'exception')
         self.log_msg(f"Processes running...", 'debug')
 
         for p in processes:
             p.join()
+            if p.exitcode != 0:
+                self.log_msg(f"Process {p.name} terminated with exit code {p.exitcode}", 'exception')
         
         HCPDDataDoer.logging_queue.put('terminate')
         logging_p.join()
@@ -528,7 +548,7 @@ data_type IS 'Parcellated'
         
         self.logger.debug(f"Concatenating resulting list of length: {len(results)}")
         parcellated_data = pd.concat(results, ignore_index=True)
-        self.logger.debug(f"parcellated_data shape: {parcellated_data.shape}")
+        self.logger.info(f"parcellated_data shape: {parcellated_data.shape}")
         try:
             feather.write_feather(parcellated_data, save_file)
             self.logger.info(f"All data combined and saved to {save_file}!")
