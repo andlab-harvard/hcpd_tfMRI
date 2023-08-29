@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -p fasse
 #SBATCH -J matlabjob
-#SBATCH --mem=16G
+#SBATCH --mem=32G
 #SBATCH -c 1
 #SBATCH -t 5-00:00:00
 #SBATCH -o logs/%x-%A.log

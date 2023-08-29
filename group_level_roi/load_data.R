@@ -1,5 +1,7 @@
 load_hcpd_data <- function(task = 'GUESSING', nthreads = 4){
-  if !task %in% c('GUESSING', 'CARIT_PREPOT', 'CARIT_PREVCOND')
+  if (!task %in% c('GUESSING', 'CARIT_PREPOT', 'CARIT_PREVCOND')){
+    stop("task is not 'GUESSING', 'CARIT_PREPOT', or 'CARIT_PREVCOND'")
+  }
   require(data.table)
   
   setDTthreads(nthreads)

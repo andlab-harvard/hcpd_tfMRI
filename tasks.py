@@ -34,12 +34,13 @@ class HCPDDataDoer:
             self.db_name = db_name
             self.timeout = 20
             self.setup_database()
+            
 
         def setup_database(self):
             """
             Sets up the SQLite3 database, creating necessary tables and columns if they do not exist.
             """
-            self.outerself.logger.debug(f"Connecting to {self.db_name}") 
+            self.outerself.logger.info(f"Connecting to {self.db_name}") 
             with sqlite3.connect(self.db_name, timeout=self.timeout) as conn:
             
                 self.outerself.logger.debug(f"Checking if table exists...") 
@@ -71,40 +72,42 @@ class HCPDDataDoer:
                     ''')
                     conn.commit()
 
+        def update_files(self, filepaths):
+            #remove sentinel value
+            filepaths = [f for f in filepaths if f is not None]
+            if filepaths:
+                parsed_infos = [self.parse_filename(filepath) for filepath in filepaths]
+                statuses = ['built' if os.path.exists(filepath) else 'missing' for filepath in filepaths]
 
-        def update_file(self, filepath):
-            status = 'built' if os.path.exists(filepath) else 'missing'
+                with sqlite3.connect(self.db_name, timeout=self.timeout) as conn:
+                    for filepath, status, parsed_info in zip(filepaths, statuses, parsed_infos):
+                        data_to_insert = {
+                            "filepath": filepath,
+                            "status": status,
+                            "pid": parsed_info["pid"],
+                            "session": parsed_info["session"],
+                            "task": parsed_info["task"],
+                            "data_type": parsed_info["data_type"],
+                            "file_type": parsed_info["file_type"]
+                        }
 
-            parsed_info = self.parse_filename(filepath)
-            conn = sqlite3.connect(self.db_name, timeout = self.timeout)
+                        # Check if filepath already exists
+                        query = "SELECT * FROM files WHERE filepath=?"
+                        df = pd.read_sql(query, conn, params=(filepath,))
 
-            # Check if filepath already exists
-            query = f"SELECT * FROM files WHERE filepath='{filepath}'"
-            df = pd.read_sql(query, conn)
+                        if df.empty:
+                            # Insert new record
+                            columns = ', '.join(data_to_insert.keys())
+                            placeholders = ', '.join('?' for _ in data_to_insert)
+                            insert_query = f"INSERT INTO files ({columns}) VALUES ({placeholders})"
+                            conn.execute(insert_query, tuple(data_to_insert.values()))
+                        else:
+                            # Update existing record
+                            update_cols = ', '.join(f"{key}=?" for key in data_to_insert.keys())
+                            update_query = f"UPDATE files SET {update_cols} WHERE filepath=?"
+                            conn.execute(update_query, tuple(data_to_insert.values()) + (filepath,))
 
-            data_to_insert = {
-                "filepath": filepath,
-                "status": status,
-                "pid": parsed_info["pid"],
-                "session": parsed_info["session"],
-                "task": parsed_info["task"],
-                "data_type": parsed_info["data_type"],
-                "file_type": parsed_info["file_type"]
-            }
-
-            if df.empty:
-                # Insert new record
-                new_data = pd.DataFrame([data_to_insert])
-                new_data.to_sql('files', conn, if_exists='append', index=False)
-            else:
-                # Update existing record
-                for column, value in data_to_insert.items():
-                    update_query = f"UPDATE files SET {column}='{value}' WHERE filepath='{filepath}'"
-                    conn.execute(update_query)
-                conn.commit()
-
-            conn.close()
-            return status
+                    conn.commit()
         
         def get_database(self, task, file_type, data_type):
             conn = sqlite3.connect(self.db_name)
@@ -220,30 +223,39 @@ data_type IS '{data_type}'
             log_method = getattr(self.logger, level_name)
             log_method(message)
             
-    def queued_update_file(self):
+    def queued_update_files(self, batch_size=50, log_interval=50):
+        processed = 0
+        self.log_msg(f"Queue processor started", 'info')
         while True:
+            batch = []
+
             with HCPDDataDoer.db_condition:
-                while HCPDDataDoer.db_queue.empty():
-                    HCPDDataDoer.db_condition.wait()
-                item = HCPDDataDoer.db_queue.get()
-                
-            if item is None:
-                break  # Sentinel value to exit loop
-            text_file = item
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    status = self.database.update_file(text_file)
-                    self.log_msg(f"Status: {status} for {text_file}", 'debug')
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        time.sleep(5)  # wait for 5 seconds before retrying
+                while len(batch) < batch_size:
+                    if not HCPDDataDoer.db_queue.empty():
+                        item = HCPDDataDoer.db_queue.get()
+                        if item is None:  # Sentinel value to exit loop
+                            batch.append(None)
+                            break
+                        batch.append(item)
                     else:
-                        self.log_msg(f"Could not update {text_file}: {e}", 'exception')
-   
-            with HCPDDataDoer.db_condition:
-                HCPDDataDoer.db_processed_events[item].set()
+                        HCPDDataDoer.db_condition.wait(1)  # wait 1 second for more items to arrive
+
+            if not batch:
+                continue
+
+            self.log_msg(f"Processing batch with length {len(batch)}", 'debug')
+            try:
+                self.database.update_files(batch)
+                processed += len(batch)
+            except Exception as e:
+                self.log_msg(f"Failed to process batch of length {len(batch)}: {e}", 'error')
+                raise Exception
+
+            if processed % log_interval == 0:
+                self.log_msg(f"Processed {processed} items. Items left in queue: {HCPDDataDoer.db_queue.qsize()}", 'info')
+
+            if None in batch:  # check for the sentinel value
+                break
       
     def remove_task_files(self, targetdir: str, task: str, hcdsession: str = None):
         """
@@ -328,21 +340,18 @@ data_type IS '{data_type}'
     def extract_parcellated_chunk(self, c, task, chunk, chunk_i):
         short_task = re.match(r"^(CARIT|GUESSING).*", task)[1]
         self.log_msg(f"Chunk {chunk_i} shape: {chunk.shape}", 'info')
-        self.log_msg(f"Chunk {chunk_i}, Number of rows for HCD2562658_V1_MR: {len(chunk[chunk.pid == 'HCD2562658_V1_MR'])}", 'info')
         for index, row in chunk.iterrows():
             pid = row['pid']
             hcp_tasks = row['hcp_task'].split("@")
 
-            self.log_msg(f"Extracting data for {pid}, index {index} in chunk {chunk_i}: {hcp_tasks}", 'info')
+            self.log_msg(f"Extracting data for {pid}, index {index} in chunk {chunk_i}: {hcp_tasks}", 'debug')
             try:
                 for hcp_task in hcp_tasks:
                     d = re.match(".*_(AP|PA)$", hcp_task)[1]
-                    self.log_msg(f"Direction is {d}", 'debug')
                     try:
                         l1path = c.l1dir.format(studyfolder = c.studyfolder,
                                                 pid = pid,
                                                 task = f"tfMRI_{short_task}_{d}")
-                        self.log_msg(f"l1 path is {l1path}", 'debug')
                     except Exception as e:
                         self.log_msg(f"Could not make path: {e}", 'exception')
 
@@ -352,44 +361,34 @@ data_type IS '{data_type}'
                         "ParcellatedStats"
                     )
                     try:
-                        self.log_msg(f"parcellated_stats_dir is {parcellated_stats_dir}", 'debug')
                         cope_files = [
                             f for f 
                             in os.listdir(parcellated_stats_dir) 
-                            if re.match("cope\d{1,2}.ptseries.nii", f)
+                            if re.match("(var)*cope\d{1,2}.ptseries.nii", f)
                         ]
                         for cope in cope_files:
                             text_file = os.path.join(parcellated_stats_dir, re.sub(r"\.nii$", ".txt", cope))
-
-                            with HCPDDataDoer.db_condition:
-                                event_for_text_file = HCPDDataDoer.manager.Event()
-                                HCPDDataDoer.db_processed_events[text_file] = event_for_text_file
-
-                                HCPDDataDoer.db_queue.put(text_file) 
-                                HCPDDataDoer.db_condition.notify_all()
-
-                            event_for_text_file.wait()
                             status = self.database.get_file_status(text_file)
-
-                            if not status:
-                                raise ValueError('File status should not be None. Database update issue likely')
-                            elif status == 'missing':
-                                cope_file = os.path.join(parcellated_stats_dir, cope)
-                                cmd = f"wb_command -cifti-convert -to-text {cope_file} {text_file}"
-                                self.log_msg(f"command is {cmd}", 'debug')
-                                wb_command = c.run(cmd)
-                                self.log_msg(f"wb_command: {wb_command}", 'debug')
-                                with HCPDDataDoer.db_condition:
-                                    HCPDDataDoer.db_queue.put(text_file)
-                                    HCPDDataDoer.db_condition.notify_all()
-                            else:
-                                self.log_msg(f"file exists: {text_file}", 'debug')
-
-                            with HCPDDataDoer.db_condition:
-                                del HCPDDataDoer.db_processed_events[text_file]
+                            self.log_msg(f"Status is <<<{status}>>> for: {text_file}", 'debug')
+                            try:
+                                if not status or status == 'missing':
+                                    cope_file = os.path.join(parcellated_stats_dir, cope)
+                                    cmd = f"wb_command -cifti-convert -to-text {cope_file} {text_file}"
+                                    self.log_msg(f"command is {cmd}", 'debug')
+                                    wb_command = c.run(cmd)
+                                    self.log_msg(f"wb_command output: {wb_command}", 'debug')
+                                    with HCPDDataDoer.db_condition:
+                                        event_for_text_file = HCPDDataDoer.manager.Event()
+                                        HCPDDataDoer.db_queue.put(text_file) 
+                                        HCPDDataDoer.db_condition.notify_all()
+                                        self.log_msg(f"Updating database with results.", 'debug')
+                                else:
+                                    self.log_msg(f"file exists: {text_file}", 'debug')
+                            except Exception as e:
+                                self.log_msg(f"Something went wrong with {cope} with status '{status}': {e}", 'error')
                     except Exception as e:
                         self.log_msg(f"Could not extract data for {pid} {hcp_task}: {e}", 'exception')
-                self.log_msg(f"Done with {pid}", 'info')
+                self.log_msg(f"Done with {pid}", 'debug')
             except Exception as e:
                 self.log_msg(f"Failed to extract data for {pid}: {e}", 'exception')
         self.log_msg(f"Done with chunk {chunk_i}", 'info')
@@ -408,13 +407,11 @@ data_type IS '{data_type}'
         id_list = pd.concat(df_list, axis=0)
         id_list_rows = id_list.shape[0]
         self.logger.info(f"ID List df has shape: {id_list.shape}")
-        self.logger.info(f"Number of rows for HCD2562658_V1_MR: {len(id_list[id_list.pid == 'HCD2562658_V1_MR'])}")
-        
         
         logging_p = Process(target=self.logging_process)
         logging_p.start()
         
-        db_process = Process(target=self.queued_update_file)
+        db_process = Process(target=self.queued_update_files)
         db_process.start()
 
         # Split id_list into chunks for each process
@@ -430,27 +427,30 @@ data_type IS '{data_type}'
             processes.append(p)
             p.start()
 
+        self.log_msg(f"Waiting for workers to finish", 'info')
         # Wait for all processes to finish
         for p in processes:
             p.join()
-        
-        HCPDDataDoer.logging_queue.put('terminate')
-        logging_p.join()
+        self.log_msg(f"Workers finished, shutting down queue worker", 'info')
         
         with HCPDDataDoer.db_condition:
             HCPDDataDoer.db_queue.put(None)
             HCPDDataDoer.db_condition.notify_all()
         db_process.join()
         
+        self.log_msg(f"Workers finished, shutting down log worker", 'info')
+        HCPDDataDoer.logging_queue.put('terminate')
+        logging_p.join()
+        
         self.logger.info("All data extracted!")
         
-        db_df = self.database.get_database('GUESSING', 'txt', 'Parcellated')
+        db_df = self.database.get_database(task, 'txt', 'Parcellated')
         db_pid_sess_rows = db_df.loc[:, ['pid', 'session']].drop_duplicates().shape[0]
         if db_pid_sess_rows != id_list_rows:
             self.logger.warning(f"Database sessions not equal to ID list sessions: {db_pid_sess_rows} v {id_list_rows}")
         
     def parse_parcellated_text_file_name(self, filename):
-        filename_re = r'.*(?P<id>HCD.*)_(?P<session>V[123])_\w+.*tfMRI_.*tfMRI_(?P<scan>.*)_(?P<direction>AP|PA).*(?P<file>cope.*)\..*series\.txt'
+        filename_re = r'.*(?P<id>HCD.*)_(?P<session>V[123])_\w+.*tfMRI_.*tfMRI_(?P<scan>.*)_(?P<direction>AP|PA).*?(?P<file>(var)*cope.*)\..*series\.txt'
         match = re.match(filename_re, filename)
         
         if not match:
@@ -568,7 +568,9 @@ data_type IS 'Parcellated'
             self.logger.info(f"All data combined and saved to {save_file}!")
         except Exception as e:
             self.logger.exception(f"Failed to save feather")
-        
+            
+    def shutdown(self):
+        pass    
 @task
 def clean(c, task: str, targetdir: str = "/ncf/hcp/data/HCD-tfMRI-MultiRunFix/", hcdsession: str = None):
     """
@@ -591,6 +593,7 @@ def clean(c, task: str, targetdir: str = "/ncf/hcp/data/HCD-tfMRI-MultiRunFix/",
         hcdsession_text = "All"
     datadoer.logger.info(f"Running clean for task: {task}, targetdir: {targetdir}, hcdsession: {hcdsession_text}")
     datadoer.remove_task_files(targetdir=targetdir, task=task, hcdsession=hcdsession)
+    datadoer.shutdown()
 
 @task(help={'task': 'The task name: [CARIT-PREPOT | CARIT-PREVCOND | GUESSING]', 
             'test': 'Run on a small subset of data', 
@@ -655,6 +658,7 @@ def build_first(c, task: str, parcellated=False, test=False, max_jobs: int = 200
             datadoer.logger.info(result)
         except Exception as e:
             datadoer.logger.exception(f"Failed to run sbatch job: {e}")
+    datadoer.shutdown()
       
 @task(iterable=['id_list_files'],
       help={'task': 'The task name: [CARIT-PREPOT | CARIT-PREVCOND | GUESSING]', 
@@ -697,6 +701,7 @@ EOF
         datadoer.logger.info(f"Invoke Command:\n\n{invoke_parallel_cmd}")
         sbatch_result = c.run(cmd)
         datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
+    datadoer.shutdown()
 
 @task
 def combine_parcellated_data(c, task: str, parallel=False, test=False):
@@ -727,7 +732,7 @@ EOF
         datadoer.logger.debug(f"Command:\n\n{cmd}")
         sbatch_result = c.run(cmd)
         datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
-
+    datadoer.shutdown()
 
 ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data)
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})
