@@ -6,3 +6,5 @@
 *.nii.gz
 *.txt
 *.csv
+*.mat
+
