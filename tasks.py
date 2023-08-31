@@ -177,7 +177,7 @@ data_type IS '{data_type}'
         if cls.pdata_queue is None:
             cls.pdata_queue = cls.manager.Queue()
     
-    def __init__(self, c):
+    def __init__(self, c, no_db = False):
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(levelname)s - %(funcName)s - %(message)s",
@@ -186,7 +186,9 @@ data_type IS '{data_type}'
         self._initialize_class_attributes()
         self.logger = self.setup_logging(log_file = c.log_file, log_level = c.log_level)
         self.logger.debug(f"Logger started, setting up database")
-        self.database = self.DatabaseManager(outerself=self, db_name=c.database_file)
+        self.database = None
+        if not no_db:
+            self.database = self.DatabaseManager(outerself=self, db_name=c.database_file)
         self.logger.debug(f"Data Doer Initialized!")
 
     def setup_logging(self, log_file: str = None, log_level: str ='INFO'):
@@ -734,5 +736,70 @@ EOF
         datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
     datadoer.shutdown()
 
-ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data)
+@task
+def cifti_thresh(c, cifti, surfaces_dir="group_level_vwise/surface", z=5, mm2=9, mm3=21):
+    """
+    Apply a threshold to a CIFTI file and produce associated outputs.
+
+    Parameters:
+    - c: A context or command interface object.
+    - cifti: Path to the CIFTI file to threshold.
+    - surfaces_dir (optional): Path to the surfaces directory. Default is "group_level_vwise/surface".
+    - z (optional): z score cutoff. Default is 5.
+    - mm2 (optional): Minimum surface area size. Default is 9.
+    - mm3 (optional): Minimum volume size. Default is 21.
+
+    Returns:
+    None. The function will write outputs to disk and log relevant information.
+    """
+    
+    # Convert input values to float
+    z = float(z)
+    mm2 = float(mm2)
+    mm3 = float(mm3)
+    
+    # Initialize a configuration dictionary for cluster commands to write out what we did.
+    clust_config_dict = {'Z': z,
+                         'mm2': mm2,
+                         'mm3': mm3,
+                         'pos_clust_cmd': None,
+                         'neg_clust_cmd': None,
+                         'join_clust_cmd': None}
+    
+    datadoer = HCPDDataDoer(c, no_db = True)
+    datadoer.logger.info(f"Creating thresholded map for {cifti}")
+
+    try:
+        if not os.path.exists(cifti):
+            raise ValueError("No file found")
+        cifti_base = re.match('(.*)\.dtseries\.nii', cifti)
+        if cifti_base:
+            cifti_base = cifti_base[1]
+        else:
+            raise ValueError("Cannot parse filename")
+        cifti_pos_out = f"{cifti_base}_posclust.dtseries.nii"
+        cifti_neg_out = f"{cifti_base}_negclust.dtseries.nii"
+        cifti_out = f"{cifti_base}_clust.dtseries.nii"
+        datadoer.logger.info(f"Out file is {cifti_out}")
+
+        #Ensure we load the modules and run one big command joined by && 
+        with c.prefix("module load ncf/1.0.0-fasrc01 connectome_workbench/1.5.0-centos6_x64-ncf"):
+            pos_clust_cmd = f"wb_command -cifti-find-clusters {cifti} {z} {mm2} {z} {mm3} COLUMN {cifti_pos_out} -left-surface {os.path.join(surfaces_dir, 'S1200.L.inflated_MSMAll.32k_fs_LR.surf.gii')} -right-surface {os.path.join(surfaces_dir, 'S1200.R.inflated_MSMAll.32k_fs_LR.surf.gii')}"
+            neg_clust_cmd = f"wb_command -cifti-find-clusters {cifti} {-z} {mm2} {-z} {mm3} COLUMN {cifti_neg_out} -less-than -left-surface {os.path.join(surfaces_dir, 'S1200.L.inflated_MSMAll.32k_fs_LR.surf.gii')} -right-surface {os.path.join(surfaces_dir, 'S1200.R.inflated_MSMAll.32k_fs_LR.surf.gii')}"
+            join_clust_cmd = f"wb_command -cifti-math '100 * (x + y)' {cifti_out} -var x {cifti_pos_out} -var y {cifti_neg_out}"
+            cmd_out = c.run(' && '.join([pos_clust_cmd, neg_clust_cmd, join_clust_cmd]))
+        
+        # Check if the clustered CIFTI file was generated and log/store the results
+        if os.path.exists(cifti_out):
+            datadoer.logger.info(f"Sucessfully created {cifti_out}")
+            clust_config_dict['pos_clust_cmd'] = pos_clust_cmd
+            clust_config_dict['neg_clust_cmd'] = neg_clust_cmd
+            clust_config_dict['join_clust_cmd'] = join_clust_cmd
+            pd.DataFrame([clust_config_dict]).to_csv(f"{cifti_base}_clust.csv")
+        else:
+            raise FileNotFoundError(f"Failed to create {cifti_out}")
+    except Exception as e:
+        datadoer.logger.error(f"Could not make cluster threshold map: {e}.")
+    
+ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh)
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})

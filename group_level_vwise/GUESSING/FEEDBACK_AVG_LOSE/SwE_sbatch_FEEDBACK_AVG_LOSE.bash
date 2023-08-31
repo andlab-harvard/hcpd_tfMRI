@@ -8,4 +8,4 @@
 #SBATCH --account=somerville_lab
 
 module load matlab/R2021a-fasrc01
-matlab -nodisplay -nosplash -nodesktop -r "run('___RUNFILE___'); exit"
+matlab -nodisplay -nosplash -nodesktop -r "run('/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/FEEDBACK_AVG_LOSE/SwE_contrast_job_run_FEEDBACK_AVG_LOSE.m'); exit"
