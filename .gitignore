@@ -7,5 +7,15 @@
 *.txt
 *.csv
 *.mat
-*/log/*
-*/logs/*
+**/log/**
+**/logs/**
+*.rds
+*.feather
+*.tar.gz
+*.log
+*.db
+.ipynb_checkpoints
+*.out
+__pycache__
+sandbox_*
+**/surface/**
