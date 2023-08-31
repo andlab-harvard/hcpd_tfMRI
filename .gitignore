@@ -7,4 +7,5 @@
 *.txt
 *.csv
 *.mat
-
+*/log/*
+*/logs/*
