@@ -690,6 +690,7 @@ def extract_parcellated(c, task: str, parallel=False, id_list_file=[], test=Fals
         invoke_parallel_cmd = f"invoke extract-parcellated --task {task} --parallel {id_list_file_args}{test_flag}"
         
         sbatch_template = f"""
+#!/bin/bash
 {c.sbatch_header}
 #SBATCH -c {c.maxcpu}
 . PYTHON_MODULES.txt
@@ -722,6 +723,7 @@ def combine_parcellated_data(c, task: str, parallel=False, test=False):
             test_flag = " --test"
         invoke_parallel_cmd = f"invoke combine-parcellated-data --task {task} --parallel{test_flag}"
         sbatch_template = f"""
+#!/bin/bash
 {c.sbatch_header}
 #SBATCH -c {c.maxcpu}
 . PYTHON_MODULES.txt
@@ -800,6 +802,100 @@ def cifti_thresh(c, cifti, surfaces_dir="group_level_vwise/surface", z=5, mm2=9,
             raise FileNotFoundError(f"Failed to create {cifti_out}")
     except Exception as e:
         datadoer.logger.error(f"Could not make cluster threshold map: {e}.")
+
+@task
+def fit_kfold(c, model, test=False, testprop=.0125, refit=False, nfolds=5, long=False, onlylong=False):
+    for foldid in range(1, nfolds + 1):
+        fit_behavior_model(c, model, test=test, testprop=testprop, refit=refit, kfold=True, nfolds=nfolds, foldid=foldid, long=long, onlylong=onlylong)
+        
+@task
+def fit_behavior_model(c, model, test=False, testprop=.0125, refit=False, kfold=False, nfolds=None, foldid=None, long=False, onlylong=False):
+    possible_models = [
+        'rt_age', 
+        'rt_age_prepot', 
+        'rt_age_prepotofac', 
+        'rt_age_prepotofac_null', 
+        'rt_age_prepotofac_null_sigma', 
+        'rt_age_prepotofac_sigma', 
+        'rt_age_prepot_null', 
+        'acc_age', 
+        'acc_age_prepotofac', 
+        'acc_rt_prepot', 
+        'acc_rt_prepot_lin', 
+        'acc_prevcond', 
+        'acc_prevcond_null', 
+        'guessing_rt', 
+        'guessing_rt_null', 
+        'rt_acc_age_prepotofac', 
+        'rt_acc_age_prepotofac_null', 
+        'rt_acc_age_prepotofac_prevcond',
+        'rt_acc_age_prepotofac_prevcond_null',
+        'rt_acc_age_prepotofac_lin'
+    ]
+    datadoer = HCPDDataDoer(c, no_db = True)
+    datadoer.logger.info(f"Fitting behavior model {model}")
+    if model not in possible_models:
+        datadoer.logger.error(f"{model} not in {possible_models}.")
+        sys.exit(1)  # Exit the program with an error status
+    r_cmd = c.R_cmd_brms_model.format(model = model)
+    NCPU = "48"
+    reserved_mem = "48G"
+    time_limit = "5-00:00"
     
-ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh)
+    R_arg_vars = ['test', 'testprop', 'refit', 'kfold', 'nfolds', 'foldid', 'long', 'onlylong']
+
+    R_flags = []
+    
+    # Iterate through the local variables based on the order in the relevant_args
+    for key in R_arg_vars:
+        value = locals()[key]
+
+        # If the variable is boolean and True, add its name to the options list
+        if isinstance(value, bool) and value:
+            R_flags.append(f"--{key}")
+        # If the variable is not boolean, add its name and value to the options list
+        elif not isinstance(value, bool) and value is not None:
+            R_flags.append(f"--{key} {value}")
+    
+    R_flags_strings = ' '.join(R_flags)
+    r_cmd += " " + R_flags_strings
+
+    log_file = os.path.join(f"log/behavior-model_{model}_%A_%a.out")
+    sbatch_template = f"""
+#!/bin/bash
+#SBATCH -c {NCPU}
+#SBATCH --mem={reserved_mem}
+#SBATCH -t {time_limit}
+#SBATCH -o {log_file}
+{c.sbatch_header_brms_model}
+{r_cmd}
+EOF
+"""
+    cmd = f"sbatch --array=1-4 <<EOF {sbatch_template}"
+    datadoer.logger.debug(f"Sbatch Command:\n\n{cmd}")
+    datadoer.logger.info(f"R Command:\n{r_cmd}")
+    
+    log_dir = os.path.join(c.R_cmd_run_dir, os.path.dirname(log_file))
+    if not os.path.isdir(log_dir):
+        os.makedirs(log_dir)
+    with c.cd(c.R_cmd_run_dir):
+        sbatch_result = c.run(cmd)
+    job_number = re.match(r'Submitted batch job (\d+)', sbatch_result.stdout)
+    if job_number:
+        job_number = job_number[1]
+        log_file_record = os.path.join(c.R_cmd_run_dir, log_file.replace("%A", job_number).replace("%a", "*"))
+        run_info_dict = {'JobID': [job_number],
+                          'logfile': [log_file_record]}
+        # Convert the DataFrame to markdown without index
+        markdown_string = pd.DataFrame.from_dict(run_info_dict).to_markdown(index=False, tablefmt="rounded_grid")
+        # Save the markdown string to a .md file
+        model_record_md = f"SBATCH-JOB-INFO_{model}_{job_number}.md"
+        datadoer.logger.info(f"Saving record of batch job to: {model_record_md}")
+        print(markdown_string)
+        with open(model_record_md, 'w') as f:
+            f.write(markdown_string + '\n')
+    else:
+        datadoer.logger.warning(f"Problem getting job number from cmd output: {sbatch_result}")
+        
+ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh, fit_behavior_model, fit_kfold)
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})

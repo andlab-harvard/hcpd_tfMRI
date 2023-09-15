@@ -6,9 +6,15 @@ studyfolder: "/ncf/hcp/data/HCD-tfMRI-MultiRunFix"
 l1dir: "{studyfolder}/{pid}/MNINonLinear/Results/{task}"
 maxcpu: 26
 sbatch_header: |
-    #!/bin/bash
     #SBATCH -p fasse
     #SBATCH --mem=16G
     #SBATCH -t 0-5
     #SBATCH -J HCPD
     #SBATCH -o log/%x-%A.out
+sbatch_header_brms_model: |
+    #SBATCH -n 1
+    #SBATCH -p fasse
+    #SBATCH --account=somerville_lab
+    chain=\${SLURM_ARRAY_TASK_ID}
+R_cmd_run_dir: "hcpd_task_behavior"
+R_cmd_brms_model: "bash /ncf/mclaughlin/users/jflournoy/data/containers/sbatch_R_command_som.bash verse-cmdstan-ggseg-libs.simg fit_behavioral_model.R --model {model} --id \\$chain"
