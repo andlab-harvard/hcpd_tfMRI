@@ -507,10 +507,11 @@ data_type IS '{data_type}'
         conn = sqlite3.connect(self.database.db_name)
 
         # Query the database to load the entire 'files' table into a DataFrame
+        db_task_name = re.sub('-', '_', task)
         text_file_df = pd.read_sql_query(f"""
 SELECT * FROM files WHERE 
 file_type IS 'txt' AND
-task IS '{task}' AND
+task IS '{db_task_name}' AND
 data_type IS 'Parcellated'
 """, conn)
 
@@ -597,7 +598,7 @@ def clean(c, task: str, targetdir: str = "/ncf/hcp/data/HCD-tfMRI-MultiRunFix/",
     datadoer.remove_task_files(targetdir=targetdir, task=task, hcdsession=hcdsession)
     datadoer.shutdown()
 
-@task(help={'task': 'The task name: [CARIT-PREPOT | CARIT-PREVCOND | GUESSING]', 
+@task(help={'task': 'The task name: [CARIT_PREPOT | CARIT_PREVCOND | GUESSING]', 
             'test': 'Run on a small subset of data', 
             'max_jobs': 'Number of concurrent SLURM jobs to run'})
 def build_first(c, task: str, parcellated=False, test=False, max_jobs: int = 200):
@@ -606,7 +607,7 @@ def build_first(c, task: str, parcellated=False, test=False, max_jobs: int = 200
 
     Parameters:
         c (object): The context object for the task.
-        task (str): The name of the task. Valid options are "CARIT-PREPOT", "CARIT-PREVCOND", or "GUESSING".
+        task (str): The name of the task. Valid options are "CARIT_PREPOT", "CARIT_PREVCOND", or "GUESSING".
         parcellated (bool, optional): If True, run first-level models on parcellated data. Default is False.
         test (bool, optional): If True, runs a test only submitting job for one participant. Default is False.
         max_jobs (int, optional): Change the number of concurrent first-level model fits. Default is 200.
@@ -619,7 +620,7 @@ def build_first(c, task: str, parcellated=False, test=False, max_jobs: int = 200
     datadoer = HCPDDataDoer(c)
 
     # Check if the 'task' parameter is valid
-    VALID_TASKS = ["CARIT-PREPOT", "CARIT-PREVCOND", "GUESSING"]
+    VALID_TASKS = ["CARIT_PREPOT", "CARIT_PREVCOND", "GUESSING"]
     if task not in VALID_TASKS:
         raise ValueError(f"Task is misspecified: Please provide a valid task. Valid tasks are {VALID_TASKS}")
 
@@ -663,12 +664,12 @@ def build_first(c, task: str, parcellated=False, test=False, max_jobs: int = 200
     datadoer.shutdown()
       
 @task(iterable=['id_list_files'],
-      help={'task': 'The task name: [CARIT-PREPOT | CARIT-PREVCOND | GUESSING]', 
+      help={'task': 'The task name: [CARIT_PREPOT | CARIT_PREVCOND | GUESSING]', 
             'parallel': 'Is this a parallel job? Intended for interal use.', 
             'id_list_file': 'First-level PID list file. Intended for interal use.'}) 
 def extract_parcellated(c, task: str, parallel=False, id_list_file=[], test=False):
     datadoer = HCPDDataDoer(c)
-    VALID_TASKS = ["CARIT-PREPOT", "CARIT-PREVCOND", "GUESSING"]
+    VALID_TASKS = ["CARIT_PREPOT", "CARIT_PREVCOND", "GUESSING"]
     if task not in VALID_TASKS:
         raise ValueError(f"Task is misspecified: Please provide a valid task. Valid tasks are {VALID_TASKS}")
 
@@ -709,7 +710,7 @@ EOF
 @task
 def combine_parcellated_data(c, task: str, parallel=False, test=False):
     datadoer = HCPDDataDoer(c)
-    VALID_TASKS = ["CARIT-PREPOT", "CARIT-PREVCOND", "GUESSING"]
+    VALID_TASKS = ["CARIT_PREPOT", "CARIT_PREVCOND", "GUESSING"]
     if task not in VALID_TASKS:
         raise ValueError(f"Task is misspecified: Please provide a valid task. Valid tasks are {VALID_TASKS}")
     if parallel:
@@ -805,44 +806,68 @@ def cifti_thresh(c, cifti, surfaces_dir="group_level_vwise/surface", z=5, mm2=9,
 
 @task
 def fit_kfold(c, model, test=False, testprop=.0125, refit=False, nfolds=5, long=False, onlylong=False):
+    """
+    Fits a behavioral model using the brms package in R with k-fold cross-validation, and submits the job to a SLURM cluster using sbatch.
+
+    Args:
+        c (object): An object containing invoke context.
+        model (str): The name of the model to fit.
+        test (bool, optional): Whether to run a test model. Defaults to False.
+        testprop (float, optional): The proportion of data to use for testing. Defaults to .0125.
+        refit (bool, optional): Whether to refit the model. Defaults to False.
+        nfolds (int, optional): The number of folds to use for cross-validation. Defaults to 5.
+        long (bool, optional): Whether to use the longitudinal data. Defaults to False.
+        onlylong (bool, optional): Whether to use only the longitudinal data (exclude cross-sectional data). Defaults to False.
+
+    Returns:
+        None
+    """
+    # Iterate through the folds
     for foldid in range(1, nfolds + 1):
+        # Call the fit_behavior_model function with k-fold cross-validation and the correct fold id
         fit_behavior_model(c, model, test=test, testprop=testprop, refit=refit, kfold=True, nfolds=nfolds, foldid=foldid, long=long, onlylong=onlylong)
         
+
 @task
-def fit_behavior_model(c, model, test=False, testprop=.0125, refit=False, kfold=False, nfolds=None, foldid=None, long=False, onlylong=False):
-    possible_models = [
-        'rt_age', 
-        'rt_age_prepot', 
-        'rt_age_prepotofac', 
-        'rt_age_prepotofac_null', 
-        'rt_age_prepotofac_null_sigma', 
-        'rt_age_prepotofac_sigma', 
-        'rt_age_prepot_null', 
-        'acc_age', 
-        'acc_age_prepotofac', 
-        'acc_rt_prepot', 
-        'acc_rt_prepot_lin', 
-        'acc_prevcond', 
-        'acc_prevcond_null', 
-        'guessing_rt', 
-        'guessing_rt_null', 
-        'rt_acc_age_prepotofac', 
-        'rt_acc_age_prepotofac_null', 
-        'rt_acc_age_prepotofac_prevcond',
-        'rt_acc_age_prepotofac_prevcond_null',
-        'rt_acc_age_prepotofac_lin'
-    ]
+def fit_behavior_model(c, model, test=False, testprop=.0125, refit=False, kfold=False, nfolds=None, foldid=None, long=False, onlylong=False, adaptdelta=None, maxtreedepth=None, nwarmup=None):
+    """
+    Fits a behavioral model using the brms package in R, and submits the job to a SLURM cluster using sbatch.
+
+    Args:
+        c (object): An object containing invoke context.
+        model (str): The name of the model to fit.
+        test (bool, optional): Whether to run a test model. Defaults to False.
+        testprop (float, optional): The proportion of data to use for testing. Defaults to .0125.
+        refit (bool, optional): Whether to refit the model. Defaults to False.
+        kfold (bool, optional): Whether to use k-fold cross-validation. Defaults to False.
+        nfolds (int, optional): The number of folds to use for cross-validation. Defaults to None.
+        foldid (int, optional): The ID of the fold to use for cross-validation. Defaults to None.
+        long (bool, optional): Whether to use the longitudinal data. Defaults to False.
+        onlylong (bool, optional): Whether to use only the longitudinal data (exclude cross-sectional data). Defaults to False.
+        adaptdelta (float, optional): The target acceptance statistic for the No-U-Turn Sampler. Defaults to None.
+        maxtreedepth (int, optional): The maximum depth of the trees used by the No-U-Turn Sampler. Defaults to None.
+        nwarmup (int, optional): The number of warmup iterations to use for the No-U-Turn Sampler. Defaults to None.
+
+    Returns:
+        None
+    """
+    # Instantiate HCPDDataDoer without database access
     datadoer = HCPDDataDoer(c, no_db = True)
+
+    # Log information about the behavior model being fitted
     datadoer.logger.info(f"Fitting behavior model {model}")
-    if model not in possible_models:
-        datadoer.logger.error(f"{model} not in {possible_models}.")
-        sys.exit(1)  # Exit the program with an error status
+
+    # Format the R command for the specified model
     r_cmd = c.R_cmd_brms_model.format(model = model)
+
+    # Set SLURM job parameters
     NCPU = "48"
     reserved_mem = "48G"
     time_limit = "5-00:00"
     
-    R_arg_vars = ['test', 'testprop', 'refit', 'kfold', 'nfolds', 'foldid', 'long', 'onlylong']
+    # Define R arguments and flags to be added to the command
+    R_arg_vars = ['test', 'testprop', 'refit', 'kfold', 'nfolds', 'foldid', 'long', 'onlylong', 
+        'adaptdelta', 'maxtreedepth', 'nwarmup']
 
     R_flags = []
     
@@ -857,10 +882,14 @@ def fit_behavior_model(c, model, test=False, testprop=.0125, refit=False, kfold=
         elif not isinstance(value, bool) and value is not None:
             R_flags.append(f"--{key} {value}")
     
+    # Join R flags into a single string
     R_flags_strings = ' '.join(R_flags)
+    # Add R flags to the R command
     r_cmd += " " + R_flags_strings
 
+    # Set the log file path
     log_file = os.path.join(f"log/behavior-model_{model}_%A_%a.out")
+    # Define the sbatch template with SLURM job parameters, R command, and log file
     sbatch_template = f"""
 #!/bin/bash
 #SBATCH -c {NCPU}
@@ -871,13 +900,17 @@ def fit_behavior_model(c, model, test=False, testprop=.0125, refit=False, kfold=
 {r_cmd}
 EOF
 """
+    # Define the full sbatch command with the sbatch template
     cmd = f"sbatch --array=1-4 <<EOF {sbatch_template}"
+    # Log the sbatch command and R command
     datadoer.logger.debug(f"Sbatch Command:\n\n{cmd}")
     datadoer.logger.info(f"R Command:\n{r_cmd}")
     
+    # Create the directory for the log file if it doesn't exist
     log_dir = os.path.join(c.R_cmd_run_dir, os.path.dirname(log_file))
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
+    # Run the sbatch command
     with c.cd(c.R_cmd_run_dir):
         sbatch_result = c.run(cmd)
     job_number = re.match(r'Submitted batch job (\d+)', sbatch_result.stdout)
@@ -897,5 +930,7 @@ EOF
     else:
         datadoer.logger.warning(f"Problem getting job number from cmd output: {sbatch_result}")
         
+# Define a collection of tasks
 ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh, fit_behavior_model, fit_kfold)
+# Configure the collection with logging settings
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})

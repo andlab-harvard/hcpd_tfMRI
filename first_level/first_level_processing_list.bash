@@ -5,7 +5,7 @@ task_postfix="PREVCOD"
 fsf="tfMRI_CARIT_PREVCOND"
 acq=("PA" "AP")
 prefix="_"
-outfile="${task}-${task_postfix}-l1-list"
+outfile="${task}_${task_postfix}-l1-list"
 datadir="/ncf/hcp/data/HCD-tfMRI-MultiRunFix"
 participantlist=($( ls -d "$datadir/HCD"* | sort ))
 

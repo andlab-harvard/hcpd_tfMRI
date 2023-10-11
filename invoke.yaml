@@ -17,4 +17,4 @@ sbatch_header_brms_model: |
     #SBATCH --account=somerville_lab
     chain=\${SLURM_ARRAY_TASK_ID}
 R_cmd_run_dir: "hcpd_task_behavior"
-R_cmd_brms_model: "bash /ncf/mclaughlin/users/jflournoy/data/containers/sbatch_R_command_som.bash verse-cmdstan-ggseg-libs.simg fit_behavioral_model.R --model {model} --id \\$chain"
+R_cmd_brms_model: "bash /ncf/mclaughlin/users/jflournoy/data/containers/sbatch_R_command_som.bash verse-cmdstan-cuda.simg fit_behavioral_model.R --model {model} --id \\$chain"

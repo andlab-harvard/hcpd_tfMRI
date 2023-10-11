@@ -1,6 +1,5 @@
-.libPaths(new = c('/ncf/mclaughlin/users/jflournoy/R/x86_64-pc-linux-gnu-library/verse-4.2.1', .libPaths()))
+.libPaths(new = c('/ncf/mclaughlin/users/jflournoy/R/x86_64-pc-linux-gnu-library/verse-4.3.1', .libPaths()))
 Sys.setenv(R_PROGRESSR_ENABLE=TRUE)
-library(data.table)
 library(data.table)
 library(brms)
 library(future.apply)
@@ -32,15 +31,15 @@ make_newdata_carit <- function(fit){
   require(data.table)
   age_range <- range(fit$data$age_c10)
   age_seq <- seq(from = age_range[[1]], to = age_range[[2]], length.out = 50)
-  conditions <- unique(fit$data$condition)
-  newdata <- as.data.table(expand.grid(age_c10 = age_seq, condition = conditions, SE = 0))
+  conditions <- unique(fit$data$condition_fac)
+  newdata <- as.data.table(expand.grid(age_c10 = age_seq, condition_fac = conditions, SE = 0))
   return(newdata)
 }
-prediction_posteriors <- function(newdata_function, contrasts, dcast_col = 'condition', posterior_by_col = 'age_c10'){
+prediction_posteriors <- function(newdata_function, contrasts, dcast_col = 'condition_fac', posterior_by_col = 'age_c10'){
   newdata_function <- newdata_function
   ret_func <- function(x){
-    #x <- fit_files[1,]
-    #newdata_function <- make_newdata_carit
+    #x <- fit
+    # newdata_function <- make_newdata_carit
     # contrasts <- list(
     #   'CR' = '(1/3)*(CR_2go + CR_3go + CR_4go)',
     #   'Hit' = '(1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
@@ -68,11 +67,14 @@ prediction_posteriors <- function(newdata_function, contrasts, dcast_col = 'cond
   return(ret_func)
 }
 run_process_data_function <- function(x, process_data_function, p){
-  #x <- x[1,]
+  #x <- some_fns[[1]]
+  #x <- fit_files[1:4, ]
   fit <- read_rds_file(x$file)
   out_data_list <- lapply(process_data_function, \(f){
-    out_data <- f(fit)
-    out_data <- cbind(x, out_data, fill = TRUE)
+    tryCatch({
+      out_data <- f(fit)
+      out_data <- cbind(x[1], out_data, fill = TRUE)},
+      error = {out_data <- x[1]})
     return(out_data)
   })
   p(message = sprintf('%s', x$file))
@@ -100,8 +102,9 @@ parallel_process_data_file <- function(x, process_data_function, split_cols, cpu
       split(x, by = split_cols, drop = TRUE), 
       1:cpus_total)
     data_out_list <<- future.apply::future_lapply(filename_list, function(some_fns){
+      #some_fns = filename_list[[1]]
       lapply(some_fns, run_process_data_function, process_data_function = process_data_function, p = p)
-    })
+    }, future.seed=TRUE)
   })
   
   # parallel::stopCluster(cl)
@@ -115,9 +118,9 @@ if(grepl('group_level_roi', getwd())){
 }
 fit_dir <- file.path(basepath, 'fits')
 
-collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'spline_contrasts2.rds'),
-                                              pattern = 'm0_spline.*rds',
-                                              regex = file.path(fit_dir, 'm0_(spline)-(\\d{3})\\.rds'),
+collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'spline_contrasts_test.rds'),
+                                              pattern = 'm0_spline-\\d{3}-c[1234].*\\.rds',
+                                              regex = file.path(fit_dir, 'm0_(spline)-(\\d{3})\\-c[1234].rds'),
                                               colnames = c('model', 'roi'),
                                               process_data_function = 
                                                 list(prediction_posteriors(newdata_function = make_newdata_carit,
@@ -151,4 +154,13 @@ rez_list <- lapply(collect_data_list, \(x){
   }
   return(rez_data)
 })
+
+rez_df <- rbindlist(unlist(unlist(unlist(rez_list, recursive = FALSE), recursive = FALSE), recursive = FALSE))
+
+library(ggplot2)
+ggplot(rez_df, aes(x = age_c10, y = Estimate)) +
+  geom_ribbon(aes(fill = roi, ymin = Q2.5, ymax = Q97.5), alpha = .1) +
+  geom_line(aes(color = roi)) +
+  facet_wrap(~param) + 
+  theme_minimal()
 

@@ -26,7 +26,7 @@ load_hcpd_data <- function(task = 'GUESSING', nthreads = 4){
     
     roi_data <- as.data.table(
       read_feather(
-        file.path(arrow_fname_dir, 'parcellated-data_GUESSING.feather')))
+        file.path(arrow_fname_dir, sprintf('parcellated-data_%s.feather', task))))
     roi_data[, roi := 1:.N, by = c('id', 'session', 'scan', 'direction', 'file')]
     
     message(sprintf('Object size is %s', format(object.size(roi_data), units = 'MB')))

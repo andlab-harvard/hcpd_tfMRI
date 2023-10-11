@@ -1,13 +1,13 @@
 TEST <- FALSE
 #TEST <- TRUE
-.libPaths(c('/ncf/mclaughlin/users/jflournoy/R/x86_64-pc-linux-gnu-library/verse-4.2.1', .libPaths()))
+.libPaths(c('/ncf/mclaughlin/users/jflournoy/R/x86_64-pc-linux-gnu-library/verse-4.3.1', .libPaths()))
 library(stringi)
 library(data.table)
 library(brms)
 library(argparse)
 
-ITER <- ifelse(TEST, 100, 5000)
-WARMUP <- ifelse(TEST, 50, 1500)
+ITER <- ifelse(TEST, 100, 3000)
+WARMUP <- ifelse(TEST, 50, 2000)
 
 # create parser object
 parser <- ArgumentParser()
@@ -26,6 +26,8 @@ parser$add_argument('--network', type = "integer", default = NULL,
                     help = 'Not implemented')
 parser$add_argument('--chainid', type = "integer", default = NULL, 
                     help = 'If splitting chains across nodes, this is the chain ID.')
+parser$add_argument('--sampleprior', type = "character", default = 'no', 
+                    help = 'Sample prior? Default is "no". Options are "only", "yes", "no"')
 
 if(TEST){
   args <- parser$parse_args(c('--model', 'm0_spline',
@@ -76,7 +78,7 @@ if(grepl('group_level_roi', getwd())){
 carit_dem_data <- fread('~/code/hcpd_task_behavior/HCPD_staged_and_pr_w_demogs.csv', select = c('sID', 'age'))
 carit_dem_data[, age_c10 := age - 10]
 
-carit_fmri_data <- load_hcpd_data('carit', nthreads = 4)
+carit_fmri_data <- load_hcpd_data('CARIT_PREPOT', nthreads = 1)
 roi_range <- range(carit_fmri_data$roi)
 cat(sprintf('Choosing ROI %d out of %d-%d.', ROI_ARG, roi_range[[1]], roi_range[[2]]))
 
@@ -92,9 +94,15 @@ cope_lookup <- c('cope1' =  'Hit_1go',
                  'cope10' = 'FA_3go',
                  'cope11' = 'FA_4go')
 
-carit_fmri_data <- melt(carit_fmri_data[roi == ROI_ARG], id.vars = c('id', 'roi', 'direction'))
+carit_fmri_data <- melt(carit_fmri_data[roi == ROI_ARG], id.vars = c('id', 'roi', 'direction', 'session'))
 carit_fmri_data[, c('variable', 'var', 'condition') := transpose(stri_match_all_regex(variable, '(var)*(cope\\d+)'))]
 carit_fmri_data[, condition := cope_lookup[condition]]
+
+#The sqrt of the varcope is the standard error, which we need for our brms formulation
+#From https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FEAT/UserGuide
+#stats/tstat1 the T statistic image for contrast 1 (=cope/sqrt(varcope)).
+#stats/varcope1 the variance (error) image for contrast 1. 
+
 carit_fmri_data[, c('value', 'var') := 
              list(fifelse(is.na(var), value, sqrt(value)),
                   fifelse(is.na(var), 'Est', 'SE'))]
@@ -106,28 +114,39 @@ carit_fmri_data[, sID := gsub('(HCD\\d+)_\\w+_\\w+', '\\1', id)]
 carit_fmri_data <- carit_fmri_data[resp_type %in% c('Hit', 'CR')]
 
 model_data <- carit_dem_data[carit_fmri_data, on = 'sID']
+model_data[, resp_type_fac := C(factor(resp_type, levels = c('Hit', 'CR')), contr = 'contr.sum')]
+model_data[, condition_fac := C(factor(condition), contr = 'contr.sum')]
 
+#contr.sum(levels(model_data$resp_type_ofac))
 
 brm_model_options <- list(
-  m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition + (1 | id/direction), 
+  m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + (1 | id/direction), 
                           family = 'student')),
-  m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition * age_c10 + (1 | id/direction), 
+  m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + (1 | id/direction), 
                                family = 'student')),
-  m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition + s(age_c10, by = condition, bs = 'tp', k = 10) +
+  m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
+                                   t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
                                  (1 | id/direction), 
+                                 sigma ~ 1 + (1 | id),
                                  family = 'student')))[[MODEL]]
 
 Est_sd <- sd(carit_fmri_data$Est)
+
 model_prior <- brms::get_prior(formula = brm_model_options[['formula']], data = model_data)
 coef_names <- unique(model_prior$coef[model_prior$class == 'b' & model_prior$coef != ""])
+sds_names <- unique(model_prior$coef[model_prior$class == 'sds' & model_prior$coef != ""])
 conditions_names <- coef_names[!grepl('(age|Intercept)', coef_names)]
 age_names <- coef_names[grepl('age', coef_names)]
-prior <- c(set_prior('gamma(2, 0.1)', class = 'nu', lb = 1))
+
+prior <- c(set_prior('gamma(2, 0.25)', class = 'nu', lb = 1))
 if(!length(conditions_names) == 0){
-  prior <- c(prior, set_prior(sprintf('normal(0,%0.1f)', Est_sd / 2), class = 'b', coef = conditions_names))
+  prior <- c(prior, set_prior(sprintf('student_t(3, 0, %0.1f)', Est_sd / 2), class = 'b', coef = conditions_names))
 }
 if(!length(age_names) == 0){
-  prior <- c(prior, set_prior(sprintf('normal(0,%0.1f)', Est_sd / 4), class = 'b', coef = age_names))
+  prior <- c(prior, set_prior(sprintf('student_t(3, 0, %0.1f)', Est_sd / 4), class = 'b', coef = age_names))
+}
+if(!length(sds_names) == 0){
+  prior <- c(prior, set_prior(sprintf('student_t(3, %0.1f, %0.1f)', Est_sd/8, Est_sd / 2), class = 'sds', coef = sds_names))
 }
 
 cat('\nDefault Priors:\n\n')
@@ -142,13 +161,14 @@ brm_options <- c(brm_model_options,
                       file_refit = 'on_change',
                       backend = 'cmdstanr',
                       iter = ITER, warmup = WARMUP, chains = CHAINS, cores = CHAINS,
-                      control = list(adapt_delta = .9999999999, max_treedepth = 20)))
+                      control = list(adapt_delta = .9999, max_treedepth = 10)))
 if(!is.null(THREADS)){
   brm_options <- c(brm_options, list(threads = THREADS))
 }
 if(!is.null(CHAINID)){
   brm_options <- c(brm_options, list(chain_ids = CHAINID))
 }
+brm_options$sample_prior <- args$sampleprior
 
 cat('\nData structure:\n\n')
 unique(model_data[, c('n_go', 'resp_type')])
@@ -160,3 +180,4 @@ brm_options
 
 fit <- do.call(brm, brm_options)
 summary(fit)
+#pp_check(fit)
