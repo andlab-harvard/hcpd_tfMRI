@@ -668,6 +668,23 @@ def build_first(c, task: str, parcellated=False, test=False, max_jobs: int = 200
             'parallel': 'Is this a parallel job? Intended for interal use.', 
             'id_list_file': 'First-level PID list file. Intended for interal use.'}) 
 def extract_parcellated(c, task: str, parallel=False, id_list_file=[], test=False):
+    """
+    Extracts parcellated data for a given task.
+
+    Args:
+        c: Invoke context object.
+        task (str): Task name. Valid tasks are ["CARIT_PREPOT", "CARIT_PREVCOND", "GUESSING"].
+        parallel (bool): Whether to run the extraction in parallel.
+        id_list_file (list): List of file paths containing subject IDs to extract data for.
+        test (bool): Whether to run in test mode.
+
+    Raises:
+        ValueError: If task is not one of the valid tasks.
+
+    Returns:
+        None
+    """
+    
     datadoer = HCPDDataDoer(c)
     VALID_TASKS = ["CARIT_PREPOT", "CARIT_PREVCOND", "GUESSING"]
     if task not in VALID_TASKS:
@@ -709,6 +726,22 @@ EOF
 
 @task
 def combine_parcellated_data(c, task: str, parallel=False, test=False):
+    """
+    Combine parcellated data for a given task.
+
+    Args:
+        c: Invoke context object.
+        task (str): Task name. Valid tasks are "CARIT_PREPOT", "CARIT_PREVCOND", and "GUESSING".
+        parallel (bool, optional): Whether to run the job in parallel. Defaults to False.
+        test (bool, optional): Whether to run the job in test mode. Defaults to False.
+
+    Raises:
+        ValueError: If the task is not one of the valid tasks.
+
+    Returns:
+        None
+    """
+    
     datadoer = HCPDDataDoer(c)
     VALID_TASKS = ["CARIT_PREPOT", "CARIT_PREVCOND", "GUESSING"]
     if task not in VALID_TASKS:
