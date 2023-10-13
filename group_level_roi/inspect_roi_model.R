@@ -2,6 +2,7 @@ library(brms)
 library(bayesplot)
 library(patchwork)
 library(priorsense)
+library(emmeans)
 
 read_rds_file <- function(x){
   require(brms)
@@ -12,6 +13,9 @@ read_rds_file <- function(x){
 
 fit <- read_rds_file(dir('group_level_roi/fits', pattern = 'm0_spline-001-c.*rds', full.names = TRUE))
 summary(fit)
+
+fit_ref <- ref_grid(fit, at = list(age_c10 = seq(-5, 11, length.out = 50)))
+plot(contrast(fit_ref, method = list(condition_fac = c(c(1, 1, 1)/3, -c(1, 1, 1, 1)/4)), by = 'age_c10'))
 
 pp_check(fit, ndraws = 15)
 do.call(patchwork::wrap_plots, plot(conditional_effects(fit), ask = FALSE))

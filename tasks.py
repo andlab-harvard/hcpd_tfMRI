@@ -710,6 +710,8 @@ def extract_parcellated(c, task: str, parallel=False, id_list_file=[], test=Fals
         sbatch_template = f"""
 #!/bin/bash
 {c.sbatch_header}
+#SBATCH --mem=16G
+#SBATCH -t 0-5
 #SBATCH -c {c.maxcpu}
 . PYTHON_MODULES.txt
 . workbench-1.3.2.txt
@@ -759,6 +761,8 @@ def combine_parcellated_data(c, task: str, parallel=False, test=False):
         sbatch_template = f"""
 #!/bin/bash
 {c.sbatch_header}
+#SBATCH --mem=16G
+#SBATCH -t 0-5
 #SBATCH -c {c.maxcpu}
 . PYTHON_MODULES.txt
 . workbench-1.3.2.txt
@@ -891,7 +895,7 @@ def fit_behavior_model(c, model, test=False, testprop=.0125, refit=False, kfold=
     datadoer.logger.info(f"Fitting behavior model {model}")
 
     # Format the R command for the specified model
-    r_cmd = c.R_cmd_brms_model.format(model = model)
+    r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_brms_model.format(model = model)])
 
     # Set SLURM job parameters
     NCPU = "48"
@@ -962,8 +966,63 @@ EOF
             f.write(markdown_string + '\n')
     else:
         datadoer.logger.warning(f"Problem getting job number from cmd output: {sbatch_result}")
-        
+
+@task
+def collect_roi_results(c, test: bool=False):
+    """
+    Runs an R script via sbatch to process brms models and save them to roi_model_results.rds
+    
+    Args:
+        c: Invoke context object
+        test (bool): Do not actually run the sbatch job.
+
+    Returns:
+        None
+    """
+    # Instantiate HCPDDataDoer without database access
+    datadoer = HCPDDataDoer(c, no_db = True)
+
+    # Log information about the behavior model being fitted
+    datadoer.logger.info(f"Collecting ROI model results")
+
+    # Format the R command for the specified model
+    r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_collect_results])
+
+    # Set SLURM job parameters
+    NCPU = "16"
+    reserved_mem = "32G"
+    time_limit = "1-00:00"
+    sbatch_template = f"""
+#!/bin/bash
+#SBATCH -c {NCPU}
+#SBATCH --mem={reserved_mem}
+#SBATCH -t {time_limit}
+{c.sbatch_header}
+{r_cmd}
+EOF
+"""
+    
+    # the sbatch command with the given sbatch template
+    cmd = f"sbatch <<EOF {sbatch_template}"
+    datadoer.logger.debug(f"Command:\n\n{cmd}")
+
+    # Execute the sbatch command and get the result
+    sbatch_result = None
+    if not test:
+        sbatch_result = c.run(cmd)
+        # Log the stdout and stderr of the sbatch command
+        datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
+
+    # Shut down the datadoer object
+    datadoer.shutdown()
+    
+@task
+def run_roi_model(c, model, test=False, testprop=.0125, refit=False, kfold=False, nfolds=None, foldid=None, long=False, onlylong=False, adaptdelta=None, maxtreedepth=None, nwarmup=None):
+    pass
+
+
 # Define a collection of tasks
-ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh, fit_behavior_model, fit_kfold)
+ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh, fit_behavior_model, fit_kfold,
+                collect_roi_results)
 # Configure the collection with logging settings
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})

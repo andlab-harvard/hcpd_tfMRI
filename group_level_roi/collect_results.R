@@ -84,6 +84,7 @@ run_process_data_function <- function(x, process_data_function, p){
 parallel_process_data_file <- function(x, process_data_function, split_cols, cpus_total, p){
   #x <- x[1:8, ]
   require(future.apply)
+  message('Setting up parallel processes..., cpus_total = ', cpus_total)
   plan('multisession', workers = cpus_total)
   
   # cl <- parallel::makeCluster(cpus_total)
@@ -118,7 +119,7 @@ if(grepl('group_level_roi', getwd())){
 }
 fit_dir <- file.path(basepath, 'fits')
 
-collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'spline_contrasts_test.rds'),
+collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'spline_contrasts.rds'),
                                               pattern = 'm0_spline-\\d{3}-c[1234].*\\.rds',
                                               regex = file.path(fit_dir, 'm0_(spline)-(\\d{3})\\-c[1234].rds'),
                                               colnames = c('model', 'roi'),
@@ -157,10 +158,7 @@ rez_list <- lapply(collect_data_list, \(x){
 
 rez_df <- rbindlist(unlist(unlist(unlist(rez_list, recursive = FALSE), recursive = FALSE), recursive = FALSE))
 
-library(ggplot2)
-ggplot(rez_df, aes(x = age_c10, y = Estimate)) +
-  geom_ribbon(aes(fill = roi, ymin = Q2.5, ymax = Q97.5), alpha = .1) +
-  geom_line(aes(color = roi)) +
-  facet_wrap(~param) + 
-  theme_minimal()
+message('Writing data to rez_df.rds')
+saveRDS(rez_df, file = file.path(basepath, 'roi_model_results.rds'))
+
 
