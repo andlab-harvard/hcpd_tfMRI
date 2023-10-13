@@ -9,6 +9,25 @@ library(argparse)
 ITER <- ifelse(TEST, 100, 3000)
 WARMUP <- ifelse(TEST, 50, 2000)
 
+parse_cope_names <- function(x, cope_lookup, ROI_ARG){
+  x <- melt(x[roi == ROI_ARG], id.vars = c('id', 'roi', 'direction', 'session'))
+  
+  x[, c('variable', 'var', 'condition') := transpose(stri_match_all_regex(variable, '(var)*(cope\\d+)'))]
+  x[, condition := cope_lookup[condition]]
+  
+  #The sqrt of the varcope is the standard error, which we need for our brms formulation
+  #From https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FEAT/UserGuide
+  #stats/tstat1 the T statistic image for contrast 1 (=cope/sqrt(varcope)).
+  #stats/varcope1 the variance (error) image for contrast 1. 
+  
+  x[, c('value', 'var') := 
+      list(fifelse(is.na(var), value, sqrt(value)),
+           fifelse(is.na(var), 'Est', 'SE'))]
+  x[, variable := NULL]
+  x <- dcast(x, ... ~ var, value.var = 'value')
+  x <- x[Est != 0 & SE != 0]
+}
+
 # create parser object
 parser <- ArgumentParser()
 
@@ -18,6 +37,9 @@ parser$add_argument('--ncpus', type = 'integer', help = 'Number of CPUs allocate
 parser$add_argument(
   "--model", type = "character", default = 'm0',
   help = "Which model to fit. Options are [M0|M_lin|M_spline].")
+parser$add_argument(
+  "--task", type = "character", default = 'CARIT_PREPOT',
+  help = "Which fMRI task. Options are [CARIT_PREPOT|CARIT_PREVCOND|GUESSING].")
 parser$add_argument('--threads', type = "integer", default = NULL, 
                     help = 'Number of threads per chain. `nthreads` x 4 should be equal to the number of CPUs allocated, unless `chainid` is specified.')
 parser$add_argument('--roi', type = "integer", default = NULL, 
@@ -28,9 +50,15 @@ parser$add_argument('--chainid', type = "integer", default = NULL,
                     help = 'If splitting chains across nodes, this is the chain ID.')
 parser$add_argument('--sampleprior', type = "character", default = 'no', 
                     help = 'Sample prior? Default is "no". Options are "only", "yes", "no"')
+parser$add_argument("--kfold", action = "store_true", 
+                    help = "Run k-fold CV using participant clusters.")
+parser$add_argument('--nfolds', type = "integer", default = 5, help = 'Number of folds')
+parser$add_argument('--foldid', type = "integer", default = 1, help = 'Fold ID')
+#ADD KFOLDS, NFOLDS, FOLDID
 
 if(TEST){
   args <- parser$parse_args(c('--model', 'm0_spline',
+                              '--task', 'GUESSING',
                               '--roi', '1',
                               '--threads', '4', 
                               '--ncpus', '4', 
@@ -40,10 +68,15 @@ if(TEST){
 }
 
 MODEL <- args$model
+TASK <- args$task
 ROI_ARG <- args$roi
 NETWORK <- args$network
 THREADS <- args$threads
 NCPUS <- args$ncpus
+KFOLD <- args$kfold
+FOLDID <- args$foldid
+NFOLDS <- args$nfolds
+
 if(is.null(args$chainid)){
   CHAINS <- 4
   CHAINID <- NULL
@@ -62,11 +95,13 @@ if(is.null(ROI_ARG) & !is.null(NETWORK)){
 } else {
   stop('Incompatible ROI number and network number (you can only specify one)')
 }
-if(is.null(CHAINID)){
-  fn <- sprintf('%s-%s', MODEL, fn_number)
-} else {
-  fn <- sprintf('%s-%s-c%d', MODEL, fn_number, CHAINID)
-}
+fn <- sprintf('%s%s-%s-%s%s-c%d', 
+              ifelse(TEST, 'test-', ''),
+              TASK,
+              MODEL, 
+              fn_number, 
+              ifelse(KFOLD, sprintf('-k%02d', FOLDID), ''), 
+              ifelse(is.null(CHAINID), 1234, CHAINID))
 
 if(grepl('group_level_roi', getwd())){
   source('load_data.R')
@@ -75,63 +110,108 @@ if(grepl('group_level_roi', getwd())){
   source('group_level_roi/load_data.R')
   fn <- file.path('group_level_roi', 'fits', fn)
 }
-carit_dem_data <- fread('~/code/hcpd_task_behavior/HCPD_staged_and_pr_w_demogs.csv', select = c('sID', 'age'))
-carit_dem_data[, age_c10 := age - 10]
 
-carit_fmri_data <- load_hcpd_data('CARIT_PREPOT', nthreads = 1)
-roi_range <- range(carit_fmri_data$roi)
-cat(sprintf('Choosing ROI %d out of %d-%d.', ROI_ARG, roi_range[[1]], roi_range[[2]]))
+dem_data <- fread('hcpd_task_behavior/HCD_Inventory_2022-04-12.csv', 
+               select = c('subject', 'site',
+                          'event_age', 'redcap_event'))
+setnames(dem_data, 'subject', 'id')
+setnames(dem_data, 'event_age', 'age')
+setnames(dem_data, 'redcap_event', 'session')
+dem_data[, age_c10 := age - 10]
 
-cope_lookup <- c('cope1' =  'Hit_1go',
-                 'cope2' =  'Hit_2go',
-                 'cope3' =  'Hit_3go',
-                 'cope4' =  'Hit_4go',
-                 'cope5' =  'Miss',
-                 'cope6' =  'CR_2go',
-                 'cope7' =  'CR_3go',
-                 'cope8' =  'CR_4go',
-                 'cope9' =  'FA_2go',
-                 'cope10' = 'FA_3go',
-                 'cope11' = 'FA_4go')
+if(TASK %in% c('CARIT_PREPOT', 'CARIT_PREVCOND')){
+  carit_fmri_data <- load_hcpd_data('CARIT_PREPOT', nthreads = 1)
+  carit_cope_lookup <- c('cope1' =  'Hit_1go',
+                         'cope2' =  'Hit_2go',
+                         'cope3' =  'Hit_3go',
+                         'cope4' =  'Hit_4go',
+                         'cope5' =  'Miss',
+                         'cope6' =  'CR_2go',
+                         'cope7' =  'CR_3go',
+                         'cope8' =  'CR_4go',
+                         'cope9' =  'FA_2go',
+                         'cope10' = 'FA_3go',
+                         'cope11' = 'FA_4go')
+  
+  carit_fmri_data <- parse_cope_names(carit_fmri_data, cope_lookup = carit_cope_lookup, ROI_ARG = ROI_ARG)
+  
+  carit_fmri_data[, c('resp_type', 'n_go') := tstrsplit(condition, '_')]
+  carit_fmri_data[, resp_type_fac := C(factor(resp_type, levels = c('Hit', 'CR')), contr = 'contr.sum')]
+  carit_fmri_data[, condition_fac := C(factor(condition), contr = 'contr.sum')]
+  fmri_data <- carit_fmri_data[resp_type %in% c('Hit', 'CR')]
 
-carit_fmri_data <- melt(carit_fmri_data[roi == ROI_ARG], id.vars = c('id', 'roi', 'direction', 'session'))
-carit_fmri_data[, c('variable', 'var', 'condition') := transpose(stri_match_all_regex(variable, '(var)*(cope\\d+)'))]
-carit_fmri_data[, condition := cope_lookup[condition]]
+  
+  brm_model_options <- list(
+    m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + (1 | id/direction), 
+                            sigma ~ 1 + (1 | id), 
+                            family = 'student')),
+    m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + (1 | id/direction),  
+                                sigma ~ 1 + (1 | id),
+                                family = 'student')),
+    m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
+                                     t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
+                                     (1 | id/direction), 
+                                   sigma ~ 1 + (1 | id),
+                                   family = 'student')))[[MODEL]]
+} else if(TASK == 'GUESSING') {
+  guessing_fmri_data <- load_hcpd_data('GUESSING', nthreads = 1)  
+  guessing_cope_lookup <- c('cope1' =  'TASK',
+                         'cope2' =  'CUE_AVG',
+                         'cope3' =  'CUE_HIGH',
+                         'cope4' =  'CUE_LOW',
+                         'cope5' =  'GUESS',
+                         'cope6' =  'FEEDBACK_AVG',
+                         'cope7' =  'FEEDBACK_AVG_WIN',
+                         'cope8' =  'FEEDBACK_AVG_LOSE',
+                         'cope9' =  'FEEDBACK_AVG_WIN-LOSE',
+                         'cope10' = 'FEEDBACK_HIGH_WIN',
+                         'cope11' = 'FEEDBACK_HIGH_LOSE',
+                         'cope12' = 'FEEDBACK_LOW_WIN',
+                         'cope13' = 'FEEDBACK_LOW_LOSE',
+                         'cope14' = 'FEEBACK_HIGH-LOW_WIN',
+                         'cope15' = 'FEEDBACK_HIGH-LOW_LOSE',
+                         'cope16' = 'FEEDBACK-CUE_AVG')
+  guessing_fmri_data <- parse_cope_names(guessing_fmri_data, cope_lookup = guessing_cope_lookup, ROI_ARG = ROI_ARG)
+  guessing_fmri_data <- guessing_fmri_data[
+    condition %in% c('CUE_HIGH', 'CUE_LOW', 
+                     'GUESS',
+                     'FEEDBACK_HIGH_WIN',
+                     'FEEDBACK_HIGH_LOSE',
+                     'FEEDBACK_LOW_WIN',
+                     'FEEDBACK_LOW_LOSE')
+  ]
+  guessing_fmri_data[, c('magnitude', 'feedback') :=
+                        transpose(stri_match_all_regex(condition, '(?:FEEDBACK|CUE)_(HIGH|LOW)_*(WIN|LOSE)*'))[2:3]]
+  guessing_fmri_data[, condition_fac := C(factor(condition), contr = 'contr.sum')]
+  fmri_data <- guessing_fmri_data
+  
+  brm_model_options <- list(
+    m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + (1 | id/direction), 
+                            sigma ~ 1 + (1 | id), 
+                            family = 'student')),
+    m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + (1 | id/direction),  
+                                sigma ~ 1 + (1 | id),
+                                family = 'student')),
+    m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
+                                     t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
+                                     (1 | id/direction), 
+                                   sigma ~ 1 + (1 | id),
+                                   family = 'student')))[[MODEL]]
+} else {
+  stop("No valid task")
+}
 
-#The sqrt of the varcope is the standard error, which we need for our brms formulation
-#From https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FEAT/UserGuide
-#stats/tstat1 the T statistic image for contrast 1 (=cope/sqrt(varcope)).
-#stats/varcope1 the variance (error) image for contrast 1. 
+if(KFOLD){
+  set.seed(92105)
+  folds <- loo::kfold_split_grouped(K = NFOLDS, x = as.character(model_data$id))
+  omitted <- predicted <- which(folds == FOLDID)
+  full_data <- model_data
+  model_data <- model_data[-omitted]
+}
 
-carit_fmri_data[, c('value', 'var') := 
-             list(fifelse(is.na(var), value, sqrt(value)),
-                  fifelse(is.na(var), 'Est', 'SE'))]
-carit_fmri_data[, variable := NULL]
-carit_fmri_data <- dcast(carit_fmri_data, ... ~ var, value.var = 'value')
-carit_fmri_data <- carit_fmri_data[Est != 0 & SE != 0]
-carit_fmri_data[, c('resp_type', 'n_go') := tstrsplit(condition, '_')]
-carit_fmri_data[, sID := gsub('(HCD\\d+)_\\w+_\\w+', '\\1', id)]
-carit_fmri_data <- carit_fmri_data[resp_type %in% c('Hit', 'CR')]
+model_data <- dem_data[fmri_data, on = c('id', 'session')]
 
-model_data <- carit_dem_data[carit_fmri_data, on = 'sID']
-model_data[, resp_type_fac := C(factor(resp_type, levels = c('Hit', 'CR')), contr = 'contr.sum')]
-model_data[, condition_fac := C(factor(condition), contr = 'contr.sum')]
-
-#contr.sum(levels(model_data$resp_type_ofac))
-
-brm_model_options <- list(
-  m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + (1 | id/direction), 
-                          family = 'student')),
-  m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + (1 | id/direction), 
-                               family = 'student')),
-  m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
-                                   t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
-                                 (1 | id/direction), 
-                                 sigma ~ 1 + (1 | id),
-                                 family = 'student')))[[MODEL]]
-
-Est_sd <- sd(carit_fmri_data$Est)
-
+Est_sd <- sd(model_data$Est)
 model_prior <- brms::get_prior(formula = brm_model_options[['formula']], data = model_data)
 coef_names <- unique(model_prior$coef[model_prior$class == 'b' & model_prior$coef != ""])
 sds_names <- unique(model_prior$coef[model_prior$class == 'sds' & model_prior$coef != ""])
@@ -161,7 +241,7 @@ brm_options <- c(brm_model_options,
                       file_refit = 'on_change',
                       backend = 'cmdstanr',
                       iter = ITER, warmup = WARMUP, chains = CHAINS, cores = CHAINS,
-                      control = list(adapt_delta = .9999, max_treedepth = 10)))
+                      control = list(adapt_delta = .9999, max_treedepth = 12)))
 if(!is.null(THREADS)){
   brm_options <- c(brm_options, list(threads = THREADS))
 }
@@ -171,13 +251,17 @@ if(!is.null(CHAINID)){
 brm_options$sample_prior <- args$sampleprior
 
 cat('\nData structure:\n\n')
-unique(model_data[, c('n_go', 'resp_type')])
-cat(sprintf('N: %d\n', length(unique(model_data$sID))))
-cat(sprintf('Obs: %d\n', dim(unique(model_data[, c('sID', 'direction')]))[[1]]))
+cat(sprintf('N: %d\n', length(unique(model_data$id))))
+cat(sprintf('Obs: %d\n', dim(unique(model_data[, c('id', 'direction', 'session')]))[[1]]))
 cat(sprintf('Coefs: \n%s', paste(coef_names, collapse = '  \n')))
 cat('\nOptions:\n\n')
 brm_options
 
 fit <- do.call(brm, brm_options)
 summary(fit)
+
+if(KFOLD){
+  fit$manual_kfold <- brms:::nlist(full_data, omitted, predicted, folds)
+  saveRDS(fit, sprintf('%s.rds', brm_options$file))
+}
 #pp_check(fit)
