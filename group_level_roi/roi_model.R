@@ -9,8 +9,21 @@ library(argparse)
 ITER <- ifelse(TEST, 100, 3000)
 WARMUP <- ifelse(TEST, 50, 2000)
 
-parse_cope_names <- function(x, cope_lookup, ROI_ARG){
-  x <- melt(x[roi == ROI_ARG], id.vars = c('id', 'roi', 'direction', 'session'))
+parse_cope_names <- function(x, cope_lookup, ROI_ARG, this_dir = '.'){
+  roi_labels <- fread(file.path(this_dir, 'CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR_LabelKey.txt'))
+  roi_labels <- roi_labels[, c('INDEX', 'LABEL', 'NETWORKSORTEDORDER')]
+  regex <- '([\\w-]+)-\\d{2}_([LR])-(\\w+)'
+  roi_labels[, c('LABEL', 'network', 'hemi', 'anat') := transpose(stri_match_all_regex(LABEL, regex))]
+  setnames(roi_labels, 'INDEX', 'roi_num')
+  subcort <- na.omit(unique(roi_labels[anat != "Ctx", anat]))
+  get_these_rois <- ROI_ARG
+  if (ROI_ARG > 360){
+    subcort_roi <- ROI_ARG - 360
+    subcort_region <- subcort[subcort_roi]
+    get_these_rois <- roi_labels[anat %in% subcort_region, roi_num]
+  }
+    
+  x <- melt(x[roi %in% get_these_rois], id.vars = c('id', 'roi', 'direction', 'session'))
   
   x[, c('variable', 'var', 'condition') := transpose(stri_match_all_regex(variable, '(var)*(cope\\d+)'))]
   x[, condition := cope_lookup[condition]]
@@ -26,6 +39,8 @@ parse_cope_names <- function(x, cope_lookup, ROI_ARG){
   x[, variable := NULL]
   x <- dcast(x, ... ~ var, value.var = 'value')
   x <- x[Est != 0 & SE != 0]
+  x[, roi_fac := factor(roi)]
+  return(x)
 }
 
 # create parser object
@@ -52,19 +67,27 @@ parser$add_argument('--sampleprior', type = "character", default = 'no',
                     help = 'Sample prior? Default is "no". Options are "only", "yes", "no"')
 parser$add_argument("--kfold", action = "store_true", 
                     help = "Run k-fold CV using participant clusters.")
+parser$add_argument("--refit", action = "store_true", 
+                    help = "Force overwrite of previous model.")
 parser$add_argument('--nfolds', type = "integer", default = 5, help = 'Number of folds')
 parser$add_argument('--foldid', type = "integer", default = 1, help = 'Fold ID')
+parser$add_argument("--long", action = "store_true", 
+                    help = "Use longitudinal data.")
+parser$add_argument("--onlylong", action = "store_true", 
+                    help = "Use _only_ longitudinal data.")
 #ADD KFOLDS, NFOLDS, FOLDID
 
 if(TEST){
   args <- parser$parse_args(c('--model', 'm0_spline',
                               '--task', 'GUESSING',
-                              '--roi', '1',
+                              '--roi', '361',
                               '--threads', '4', 
                               '--ncpus', '4', 
                               '--chainid', '1'))
+  this_dir <- 'group_level_roi'
 } else {
   args <- parser$parse_args()
+  this_dir <- '.'
 }
 
 MODEL <- args$model
@@ -76,6 +99,9 @@ NCPUS <- args$ncpus
 KFOLD <- args$kfold
 FOLDID <- args$foldid
 NFOLDS <- args$nfolds
+REFIT <- args$refit
+LONG <- args$long | args$onlylong
+ONLYLONG <- args$onlylong
 
 if(is.null(args$chainid)){
   CHAINS <- 4
@@ -111,7 +137,7 @@ if(grepl('group_level_roi', getwd())){
   fn <- file.path('group_level_roi', 'fits', fn)
 }
 
-dem_data <- fread('hcpd_task_behavior/HCD_Inventory_2022-04-12.csv', 
+dem_data <- fread(file.path(this_dir, '..', 'hcpd_task_behavior', 'HCD_Inventory_2022-04-12.csv'), 
                select = c('subject', 'site',
                           'event_age', 'redcap_event'))
 setnames(dem_data, 'subject', 'id')
@@ -133,7 +159,7 @@ if(TASK %in% c('CARIT_PREPOT', 'CARIT_PREVCOND')){
                          'cope10' = 'FA_3go',
                          'cope11' = 'FA_4go')
   
-  carit_fmri_data <- parse_cope_names(carit_fmri_data, cope_lookup = carit_cope_lookup, ROI_ARG = ROI_ARG)
+  carit_fmri_data <- parse_cope_names(carit_fmri_data, cope_lookup = carit_cope_lookup, ROI_ARG = ROI_ARG, this_dir = this_dir)
   
   carit_fmri_data[, c('resp_type', 'n_go') := tstrsplit(condition, '_')]
   carit_fmri_data[, resp_type_fac := C(factor(resp_type, levels = c('Hit', 'CR')), contr = 'contr.sum')]
@@ -141,18 +167,38 @@ if(TASK %in% c('CARIT_PREPOT', 'CARIT_PREVCOND')){
   fmri_data <- carit_fmri_data[resp_type %in% c('Hit', 'CR')]
 
   
-  brm_model_options <- list(
-    m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + (1 | id/direction), 
-                            sigma ~ 1 + (1 | id), 
-                            family = 'student')),
-    m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + (1 | id/direction),  
-                                sigma ~ 1 + (1 | id),
-                                family = 'student')),
-    m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
-                                     t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
-                                     (1 | id/direction), 
-                                   sigma ~ 1 + (1 | id),
-                                   family = 'student')))[[MODEL]]
+  N_roi <- length(unique(fmri_data$roi))
+  
+  if(N_roi > 1){
+    brm_model_options <- list(
+      m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
+                                (1 | id/direction) + (1 | roi_fac), 
+                              sigma ~ 1 + (1 | id), 
+                              family = 'student')),
+      m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + 
+                                    (1 | id/direction) + (1 + age_c10 | roi_fac),  
+                                  sigma ~ 1 + (1 | id),
+                                  family = 'student')),
+      m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
+                                       t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
+                                       t2(roi_fac, age_c10, bs = 'sz', k = 10) +
+                                       (1 | id/direction), 
+                                     sigma ~ 1 + (1 | id),
+                                     family = 'student')))[[MODEL]]
+  } else {
+    brm_model_options <- list(
+      m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + (1 | id/direction), 
+                              sigma ~ 1 + (1 | id), 
+                              family = 'student')),
+      m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + (1 | id/direction),  
+                                  sigma ~ 1 + (1 | id),
+                                  family = 'student')),
+      m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
+                                       t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
+                                       (1 | id/direction), 
+                                     sigma ~ 1 + (1 | id),
+                                     family = 'student')))[[MODEL]]
+  }
 } else if(TASK == 'GUESSING') {
   guessing_fmri_data <- load_hcpd_data('GUESSING', nthreads = 1)  
   guessing_cope_lookup <- c('cope1' =  'TASK',
@@ -171,7 +217,7 @@ if(TASK %in% c('CARIT_PREPOT', 'CARIT_PREVCOND')){
                          'cope14' = 'FEEBACK_HIGH-LOW_WIN',
                          'cope15' = 'FEEDBACK_HIGH-LOW_LOSE',
                          'cope16' = 'FEEDBACK-CUE_AVG')
-  guessing_fmri_data <- parse_cope_names(guessing_fmri_data, cope_lookup = guessing_cope_lookup, ROI_ARG = ROI_ARG)
+  guessing_fmri_data <- parse_cope_names(x = guessing_fmri_data, cope_lookup = guessing_cope_lookup, ROI_ARG = ROI_ARG, this_dir = this_dir)
   guessing_fmri_data <- guessing_fmri_data[
     condition %in% c('CUE_HIGH', 'CUE_LOW', 
                      'GUESS',
@@ -185,18 +231,38 @@ if(TASK %in% c('CARIT_PREPOT', 'CARIT_PREVCOND')){
   guessing_fmri_data[, condition_fac := C(factor(condition), contr = 'contr.sum')]
   fmri_data <- guessing_fmri_data
   
-  brm_model_options <- list(
-    m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + (1 | id/direction), 
-                            sigma ~ 1 + (1 | id), 
-                            family = 'student')),
-    m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + (1 | id/direction),  
-                                sigma ~ 1 + (1 | id),
-                                family = 'student')),
-    m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
-                                     t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
-                                     (1 | id/direction), 
-                                   sigma ~ 1 + (1 | id),
-                                   family = 'student')))[[MODEL]]
+  N_roi <- length(unique(fmri_data$roi))
+  
+  if(N_roi > 1){
+    brm_model_options <- list(
+      m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
+                                (1 | id/direction) + (1 | roi_fac), 
+                              sigma ~ 1 + (1 | id), 
+                              family = 'student')),
+      m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + 
+                                    (1 | id/direction) + (1 + age_c10 | roi_fac),  
+                                  sigma ~ 1 + (1 | id),
+                                  family = 'student')),
+      m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
+                                       t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
+                                       t2(roi_fac, age_c10, bs = 'sz', k = 10) +
+                                       (1 | id/direction), 
+                                     sigma ~ 1 + (1 | id),
+                                     family = 'student')))[[MODEL]]
+  } else {
+    brm_model_options <- list(
+      m0 = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + (1 | id/direction), 
+                              sigma ~ 1 + (1 | id), 
+                              family = 'student')),
+      m0_lin = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac * age_c10 + (1 | id/direction),  
+                                  sigma ~ 1 + (1 | id),
+                                  family = 'student')),
+      m0_spline = list(formula = bf( Est | se(SE, sigma = TRUE) ~ 1 + condition_fac + 
+                                       t2(age_c10, by = condition_fac, bs = 'tp', k = 10) +
+                                       (1 | id/direction), 
+                                     sigma ~ 1 + (1 | id),
+                                     family = 'student')))[[MODEL]]
+  }
 } else {
   stop("No valid task")
 }
@@ -210,6 +276,13 @@ if(KFOLD){
 }
 
 model_data <- dem_data[fmri_data, on = c('id', 'session')]
+
+if(!LONG){
+  model_data <- model_data[session == 'V1']
+} else if(ONLYLONG){
+  long_pid <- model_data[, .(nwaves = length(unique(session))), by = 'id'][nwaves > 1, 'id']
+  model_data <- model_data[long_pid, on = 'id']
+} 
 
 Est_sd <- sd(model_data$Est)
 model_prior <- brms::get_prior(formula = brm_model_options[['formula']], data = model_data)
@@ -238,7 +311,7 @@ brm_options <- c(brm_model_options,
                  list(prior = prior,
                       data = model_data,
                       file = fn,
-                      file_refit = 'on_change',
+                      file_refit = ifelse(REFIT, 'always', 'on_change'),
                       backend = 'cmdstanr',
                       iter = ITER, warmup = WARMUP, chains = CHAINS, cores = CHAINS,
                       control = list(adapt_delta = .9999, max_treedepth = 12)))
@@ -249,10 +322,13 @@ if(!is.null(CHAINID)){
   brm_options <- c(brm_options, list(chain_ids = CHAINID))
 }
 brm_options$sample_prior <- args$sampleprior
+brm_options$stan_model_args <- list(stanc_options = list('O1')) 
+brm_options$silent <- 0
 
 cat('\nData structure:\n\n')
 cat(sprintf('N: %d\n', length(unique(model_data$id))))
 cat(sprintf('Obs: %d\n', dim(unique(model_data[, c('id', 'direction', 'session')]))[[1]]))
+cat(sprintf('Waves: %d\n', dim(unique(model_data[, c('session')]))[[1]]))
 cat(sprintf('Coefs: \n%s', paste(coef_names, collapse = '  \n')))
 cat('\nOptions:\n\n')
 brm_options

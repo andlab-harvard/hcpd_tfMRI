@@ -895,7 +895,7 @@ def fit_behavior_model(c, model, test=False, testprop=.0125, refit=False, kfold=
     datadoer.logger.info(f"Fitting behavior model {model}")
 
     # Format the R command for the specified model
-    r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_brms_model.format(model = model)])
+    r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_beh_model, f"--model {model} --chainid \$chain"])
 
     # Set SLURM job parameters
     NCPU = "48"
@@ -933,7 +933,8 @@ def fit_behavior_model(c, model, test=False, testprop=.0125, refit=False, kfold=
 #SBATCH --mem={reserved_mem}
 #SBATCH -t {time_limit}
 #SBATCH -o {log_file}
-{c.sbatch_header_brms_model}
+{c.sbatch_header}
+chain=\${{SLURM_ARRAY_TASK_ID}}
 {r_cmd}
 EOF
 """
@@ -944,16 +945,16 @@ EOF
     datadoer.logger.info(f"R Command:\n{r_cmd}")
     
     # Create the directory for the log file if it doesn't exist
-    log_dir = os.path.join(c.R_cmd_run_dir, os.path.dirname(log_file))
+    log_dir = os.path.join(c.R_cmd_beh_model_run_dir, os.path.dirname(log_file))
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
     # Run the sbatch command
-    with c.cd(c.R_cmd_run_dir):
+    with c.cd(c.R_cmd_beh_model_run_dir):
         sbatch_result = c.run(cmd)
     job_number = re.match(r'Submitted batch job (\d+)', sbatch_result.stdout)
     if job_number:
         job_number = job_number[1]
-        log_file_record = os.path.join(c.R_cmd_run_dir, log_file.replace("%A", job_number).replace("%a", "*"))
+        log_file_record = os.path.join(c.R_cmd_beh_model_run_dir, log_file.replace("%A", job_number).replace("%a", "*"))
         run_info_dict = {'JobID': [job_number],
                           'logfile': [log_file_record]}
         # Convert the DataFrame to markdown without index
@@ -1017,12 +1018,100 @@ EOF
     datadoer.shutdown()
     
 @task
-def run_roi_model(c, model, test=False, testprop=.0125, refit=False, kfold=False, nfolds=None, foldid=None, long=False, onlylong=False, adaptdelta=None, maxtreedepth=None, nwarmup=None):
-    pass
+def run_roi_models(c, model: str, task: str, refit=False, kfold=False, nfolds=None, foldid=None, long=False, onlylong=False, roimax: int=370, test=False, testroi=1):
+    """
+    Run models for each ROI in parallel using SLURM.
 
+    Args:
+    - c: Invoke context object.
+    - model: str, name of the type of model to fit
+    - task: str, name of the fMRI task to fit the model to
+    - refit: bool, whether to refit the model (default: False)
+    - kfold: bool, whether to use k-fold cross-validation (default: False)
+    - nfolds: int, number of folds to use for k-fold cross-validation (default: None)
+    - foldid: int, ID of the fold to use for k-fold cross-validation (default: None)
+    - long: bool, whether to use the longitudinal data (default: False)
+    - onlylong: bool, whether to use only longitudinal data (default: False)
+    - roimax: int, maximum ROI number to fit the behavior model to (default: 370, 361-370 are subcortical)
+    - test: bool, whether to test the model (default: False)
+    - testroi: int, ROI number to test the model on (default: 1)
+
+    Returns: None
+    """
+
+    # Instantiate HCPDDataDoer without datab
+    # ase access
+
+    datadoer = HCPDDataDoer(c, no_db = True)
+
+    # Log information about the behavior model being fitted
+    datadoer.logger.info(f"Fitting behavior model {model}")
+
+    # Format the R command for the specified model
+    r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_roi_model, f"--model {model} --task {task} --chainid \$chain"])
+    
+    # Set SLURM job parameters
+    NCPU = "16"
+    reserved_mem = "16G"
+    time_limit = "1-00:00"
+    
+    # Define R arguments and flags to be added to the command
+    R_arg_vars = ['refit', 'kfold', 'nfolds', 'foldid', 'long', 'onlylong']
+
+    R_flags = []
+    
+    # Iterate through the local variables based on the order in the relevant_args
+    for key in R_arg_vars:
+        value = locals()[key]
+
+        # If the variable is boolean and True, add its name to the options list
+        if isinstance(value, bool) and value:
+            R_flags.append(f"--{key}")
+        # If the variable is not boolean, add its name and value to the options list
+        elif not isinstance(value, bool) and value is not None:
+            R_flags.append(f"--{key} {value}")
+    
+    # Join R flags into a single string
+    R_flags_strings = ' '.join(R_flags)
+    # Add R flags to the R command
+    r_cmd += " " + R_flags_strings
+    
+    roi_range = range(1, roimax+1)
+    if test:
+        roi_range = range(testroi, testroi+1)
+    for roi in roi_range:
+        # Set the log file path
+        log_file = os.path.join(f"log/roi-{roi}_{model}_%A_%a.out")
+        # Define the sbatch template with SLURM job parameters, R command, and log file
+        sbatch_template = f"""
+#!/bin/bash
+#SBATCH -c {NCPU}
+#SBATCH --mem={reserved_mem}
+#SBATCH -t {time_limit}
+#SBATCH -o {log_file}
+{c.sbatch_header}
+chain=\${{SLURM_ARRAY_TASK_ID}}
+{r_cmd} --roi {roi}
+EOF
+"""
+        # Define the full sbatch command with the sbatch template
+        cmd = f"sbatch --array=1-4 <<EOF {sbatch_template}"
+        # Log the sbatch command and R command
+        datadoer.logger.debug(f"Sbatch Command:\n\n{cmd}")
+        datadoer.logger.info(f"R Command:\n{r_cmd}")
+        # Create the directory for the log file if it doesn't exist
+        log_dir = os.path.join(c.R_cmd_roi_model_run_dir, os.path.dirname(log_file))
+        if not os.path.isdir(log_dir):
+            os.makedirs(log_dir)
+        # Run the sbatch command
+        with c.cd(c.R_cmd_roi_model_run_dir):
+            sbatch_result = c.run(cmd)
+        job_number = re.match(r'Submitted batch job (\d+)', sbatch_result.stdout)
+        job_log_string = os.path.join(log_dir, f"*{job_number[1]}*")
+        datadoer.logger.info(f"Sbatch job log: {job_log_string}")
 
 # Define a collection of tasks
 ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh, fit_behavior_model, fit_kfold,
-                collect_roi_results)
+                collect_roi_results, run_roi_models)
 # Configure the collection with logging settings
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})
