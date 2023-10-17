@@ -35,9 +35,24 @@ make_newdata_carit <- function(fit){
   newdata <- as.data.table(expand.grid(age_c10 = age_seq, condition_fac = conditions, SE = 0))
   return(newdata)
 }
+make_newdata_guessing <- function(fit){
+  #fit <- read_rds_file(fit_files[1:4, file])
+  age_range <- range(fit$data$age_c10)
+  age_seq <- seq(from = age_range[[1]], to = age_range[[2]], length.out = 50)
+  conditions <- unique(fit$data$condition_fac)
+  newdata <- as.data.table(expand.grid(age_c10 = age_seq, condition_fac = conditions, SE = 0))
+  return(newdata)
+}
+
 prediction_posteriors <- function(newdata_function, contrasts, dcast_col = 'condition_fac', posterior_by_col = 'age_c10'){
   newdata_function <- newdata_function
   ret_func <- function(x){
+    colnames_from_contrast <- function(text) {
+      require(stringi)
+      pattern <- "\\b(?=[^\\d])\\w+(_\\w+)*?\\b"
+      matches <- unlist(stri_extract_all_regex(text, pattern))
+      return(matches)
+    }
     #x <- fit
     # newdata_function <- make_newdata_carit
     # contrasts <- list(
@@ -49,19 +64,41 @@ prediction_posteriors <- function(newdata_function, contrasts, dcast_col = 'cond
     
     require(brms)
     require(data.table)
+    
+    message('Making new data..')
     newdata_function <- newdata_function
     newdata <- newdata_function(x)
+    message('Getting predictions...')
     epred <- as.data.table(brms::posterior_epred(x, newdata = newdata, re_formula = NA))
     epred[, draw_id := 1:.N]
     epred <- melt(epred, variable.name = 'index', id.vars = 'draw_id')
     newdata[, index := sprintf('V%d', 1:.N)]
+    message('Merging data and predictions...')
     newdata_epred <- merge(epred, newdata, by = 'index', all.x = TRUE)
     dcast_formula <- formula(sprintf('... ~ %s', dcast_col))
     newdata_epred_w <- dcast(newdata_epred[, -'index'], dcast_formula)
-    newdata_epred_w[, names(contrasts) := lapply(contrasts, \(x){ eval(parse(text = x)) })]
+    newdata_epred_w_cols <- names(newdata_epred_w)
+    newdata_epred_w[, names(contrasts) := lapply(contrasts, \(x){ 
+      message("Applying contrast: ", x)
+      con_cols <- colnames_from_contrast(x)
+      for (col in con_cols) {
+        message(col)
+      }
+      if (!all(con_cols %in% newdata_epred_w_cols)){
+        err_cols <- con_cols[!con_cols %in% newdata_epred_w_cols]
+        message("ERROR: Columns not in data. Error columns: ")
+        for (err_col in err_cols){
+          message(err_col)
+        }
+        stop("error")
+      }
+      eval(parse(text = x)) 
+    })]
     newdata_epred_post_summary <-  
       newdata_epred_w[, as.data.table(posterior_summary(.SD, robust = TRUE), keep.rownames = 'param'), 
                       .SDcols = names(contrasts), by = c(posterior_by_col)]
+    sample_size <- as.data.table(ngrps(x))
+    newdata_epred_post_summary <- cbind(newdata_epred_post_summary, sample_size)
     return(newdata_epred_post_summary)
   }
   return(ret_func)
@@ -69,7 +106,12 @@ prediction_posteriors <- function(newdata_function, contrasts, dcast_col = 'cond
 run_process_data_function <- function(x, process_data_function, p){
   #x <- some_fns[[1]]
   #x <- fit_files[1:4, ]
+  message('Reading fits from files:')
+  for (file in x$file){
+    message(file)
+  }
   fit <- read_rds_file(x$file)
+  message('Processing data')
   out_data_list <- lapply(process_data_function, \(f){
     tryCatch({
       out_data <- f(fit)
@@ -119,8 +161,8 @@ if(grepl('group_level_roi', getwd())){
 }
 fit_dir <- file.path(basepath, 'fits')
 
-collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'spline_contrasts.rds'),
-                                              pattern = 'm0_spline-\\d{3}-c[1234].*\\.rds',
+collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'carit-prevcond_spline_contrasts.rds'),
+                                              pattern = '^m0_spline-\\d{3}-c[1234].*\\.rds',
                                               regex = file.path(fit_dir, 'm0_(spline)-(\\d{3})\\-c[1234].rds'),
                                               colnames = c('model', 'roi'),
                                               process_data_function = 
@@ -130,9 +172,20 @@ collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'spl
                                                                              Hit = '(1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
                                                                              CRmHit = '(1/3)*(CR_2go + CR_3go + CR_4go) - (1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
                                                                              GoxPrepot = '(1/3)*(Hit_1go + Hit_2go + Hit_3go) - Hit_4go',
-                                                                             CRxPrepot = '(1/2)*(CR_2go + CR_3go) - CR_4go')))))
+                                                                             CRxPrepot = '(1/2)*(CR_2go + CR_3go) - CR_4go')))),
+                          guessing_spline = list(data_fn = file.path(basepath, 'guessing_spline_contrasts.rds'),
+                                              pattern = 'GUESSING-m0_spline-\\d{3}-c[1234].*\\.rds',
+                                              regex = file.path(fit_dir, 'GUESSING-m0_(spline)-(\\d{3})\\-c[1234].rds'),
+                                              colnames = c('model', 'roi'),
+                                              process_data_function = 
+                                                list(prediction_posteriors(newdata_function = make_newdata_guessing,
+                                                                           contrasts = list(
+                                                                             CueHighmCueLow = 'CUE_HIGH - CUE_LOW',
+                                                                             FBWinmFBLoss = '(1/2)*(FEEDBACK_HIGH_WIN + FEEDBACK_LOW_WIN) - (1/2)*(FEEDBACK_HIGH_LOSE + FEEDBACK_LOW_LOSE)'
+                                                                           )))))
 
-#x=collect_data_list[[1]]
+#collect_data_list=collect_data_list[1]
+#x <- collect_data_list[[1]]
 rez_list <- lapply(collect_data_list, \(x){
   if(!file.exists(x$data_fn)){
     
@@ -159,6 +212,6 @@ rez_list <- lapply(collect_data_list, \(x){
 rez_df <- rbindlist(unlist(unlist(unlist(rez_list, recursive = FALSE), recursive = FALSE), recursive = FALSE))
 
 message('Writing data to rez_df.rds')
-saveRDS(rez_df, file = file.path(basepath, 'roi_model_results.rds'))
+saveRDS(rez_df, file = file.path(basepath, 'roi_model_results_test.rds'))
 
 

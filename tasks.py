@@ -1049,12 +1049,7 @@ def run_roi_models(c, model: str, task: str, refit=False, kfold=False, nfolds=No
 
     # Format the R command for the specified model
     r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_roi_model, f"--model {model} --task {task} --chainid \$chain"])
-    
-    # Set SLURM job parameters
-    NCPU = "16"
-    reserved_mem = "16G"
-    time_limit = "1-00:00"
-    
+        
     # Define R arguments and flags to be added to the command
     R_arg_vars = ['refit', 'kfold', 'nfolds', 'foldid', 'long', 'onlylong']
 
@@ -1080,6 +1075,11 @@ def run_roi_models(c, model: str, task: str, refit=False, kfold=False, nfolds=No
     if test:
         roi_range = range(testroi, testroi+1)
     for roi in roi_range:
+        # Set SLURM job parameters
+        NCPU = "48" if roi > 360 else "16"
+        reserved_mem = "32G" if roi > 360 else "16G"
+        time_limit = "5-00:00" if roi > 360 else "1-00:00"
+
         # Set the log file path
         log_file = os.path.join(f"log/roi-{roi}_{model}_%A_%a.out")
         # Define the sbatch template with SLURM job parameters, R command, and log file

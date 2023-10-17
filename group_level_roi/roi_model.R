@@ -63,8 +63,8 @@ parser$add_argument('--network', type = "integer", default = NULL,
                     help = 'Not implemented')
 parser$add_argument('--chainid', type = "integer", default = NULL, 
                     help = 'If splitting chains across nodes, this is the chain ID.')
-parser$add_argument('--sampleprior', type = "character", default = 'no', 
-                    help = 'Sample prior? Default is "no". Options are "only", "yes", "no"')
+parser$add_argument('--sampleprior', type = "character", default = 'yes', 
+                    help = 'Sample prior? Default is "yes". Options are "only", "yes", "no"')
 parser$add_argument("--kfold", action = "store_true", 
                     help = "Run k-fold CV using participant clusters.")
 parser$add_argument("--refit", action = "store_true", 
