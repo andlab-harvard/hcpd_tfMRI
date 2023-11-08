@@ -7,7 +7,6 @@ l1dir: "{studyfolder}/{pid}/MNINonLinear/Results/{task}"
 maxcpu: 26
 sbatch_header: |
     #SBATCH -p fasse
-    #SBATCH -J HCPD
     #SBATCH -n 1
     #SBATCH --account=somerville_lab
     #SBATCH --export=NONE

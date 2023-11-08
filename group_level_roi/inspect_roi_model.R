@@ -11,7 +11,7 @@ read_rds_file <- function(x){
   return(cfit)
 }
 
-fit <- read_rds_file(dir('group_level_roi/fits', pattern = 'm0_spline-001-c.*rds', full.names = TRUE))
+fit <- read_rds_file(dir('group_level_roi/fits', pattern = '^GUESSING-m0_spline-362-c.*rds', full.names = TRUE))
 summary(fit)
 
 fit_ref <- ref_grid(fit, at = list(age_c10 = seq(-5, 11, length.out = 50)))

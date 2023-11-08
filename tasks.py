@@ -969,7 +969,7 @@ EOF
         datadoer.logger.warning(f"Problem getting job number from cmd output: {sbatch_result}")
 
 @task
-def collect_roi_results(c, test: bool=False):
+def collect_roi_model_results(c, clean: bool=False, test: bool=False):
     """
     Runs an R script via sbatch to process brms models and save them to roi_model_results.rds
     
@@ -983,8 +983,7 @@ def collect_roi_results(c, test: bool=False):
     # Instantiate HCPDDataDoer without database access
     datadoer = HCPDDataDoer(c, no_db = True)
 
-    # Log information about the behavior model being fitted
-    datadoer.logger.info(f"Collecting ROI model results")
+    
 
     # Format the R command for the specified model
     r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_collect_results])
@@ -1002,15 +1001,26 @@ def collect_roi_results(c, test: bool=False):
 {r_cmd}
 EOF
 """
+    if clean:
+        datadoer.logger.info(f"Cleaning collected ROI model results")
+        files_to_remove = ['carit-prevcond_spline_contrasts.rds', 'guessing_spline_contrasts.rds']
+        cmd = f"rm -v {' '.join(files_to_remove)}"
+    else:
+        datadoer.logger.info(f"Collecting ROI model results")
+        cmd = f"sbatch <<EOF {sbatch_template}"
     
-    # the sbatch command with the given sbatch template
-    cmd = f"sbatch <<EOF {sbatch_template}"
     datadoer.logger.debug(f"Command:\n\n{cmd}")
 
     # Execute the sbatch command and get the result
     sbatch_result = None
     if not test:
-        sbatch_result = c.run(cmd)
+        if not re.match(".*group_level_roi", os.getcwd()):
+            exec_dir = 'group_level_roi'
+        else:
+            exec_dir = '.'
+        with c.cd(exec_dir):
+            datadoer.logger.info(f"Running in {os.getcwd()}")
+            sbatch_result = c.run(cmd)
         # Log the stdout and stderr of the sbatch command
         datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
 
@@ -1018,7 +1028,7 @@ EOF
     datadoer.shutdown()
     
 @task
-def run_roi_models(c, model: str, task: str, refit=False, kfold=False, nfolds=None, foldid=None, long=False, onlylong=False, roimax: int=370, test=False, testroi=1):
+def run_roi_models(c, model: str, task: str, refit=False, kfold=False, nfolds=None, foldid=None, long=False, onlylong=False, roimin: int=1, roimax: int=380, test=False, testroi=1):
     """
     Run models for each ROI in parallel using SLURM.
 
@@ -1032,7 +1042,8 @@ def run_roi_models(c, model: str, task: str, refit=False, kfold=False, nfolds=No
     - foldid: int, ID of the fold to use for k-fold cross-validation (default: None)
     - long: bool, whether to use the longitudinal data (default: False)
     - onlylong: bool, whether to use only longitudinal data (default: False)
-    - roimax: int, maximum ROI number to fit the behavior model to (default: 370, 361-370 are subcortical)
+    - roimin: int, minimum ROI number to fit the behavior model to (default: 1)
+    - roimax: int, maximum ROI number to fit the behavior model to (default: 380, 361-380 are subcortical)
     - test: bool, whether to test the model (default: False)
     - testroi: int, ROI number to test the model on (default: 1)
 
@@ -1071,13 +1082,13 @@ def run_roi_models(c, model: str, task: str, refit=False, kfold=False, nfolds=No
     # Add R flags to the R command
     r_cmd += " " + R_flags_strings
     
-    roi_range = range(1, roimax+1)
+    roi_range = range(roimin, roimax+1)
     if test:
         roi_range = range(testroi, testroi+1)
     for roi in roi_range:
         # Set SLURM job parameters
         NCPU = "48" if roi > 360 else "16"
-        reserved_mem = "32G" if roi > 360 else "16G"
+        reserved_mem = "48G" if roi > 360 else "16G"
         time_limit = "5-00:00" if roi > 360 else "1-00:00"
 
         # Set the log file path
@@ -1085,6 +1096,7 @@ def run_roi_models(c, model: str, task: str, refit=False, kfold=False, nfolds=No
         # Define the sbatch template with SLURM job parameters, R command, and log file
         sbatch_template = f"""
 #!/bin/bash
+#SBATCH -J {roi}-HCPD
 #SBATCH -c {NCPU}
 #SBATCH --mem={reserved_mem}
 #SBATCH -t {time_limit}
@@ -1112,6 +1124,6 @@ EOF
 
 # Define a collection of tasks
 ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh, fit_behavior_model, fit_kfold,
-                collect_roi_results, run_roi_models)
+                collect_roi_model_results, run_roi_models)
 # Configure the collection with logging settings
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})

@@ -174,7 +174,7 @@ collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'car
                                                                              GoxPrepot = '(1/3)*(Hit_1go + Hit_2go + Hit_3go) - Hit_4go',
                                                                              CRxPrepot = '(1/2)*(CR_2go + CR_3go) - CR_4go')))),
                           guessing_spline = list(data_fn = file.path(basepath, 'guessing_spline_contrasts.rds'),
-                                              pattern = 'GUESSING-m0_spline-\\d{3}-c[1234].*\\.rds',
+                                              pattern = '^GUESSING-m0_spline-\\d{3}-c[1234].*\\.rds',
                                               regex = file.path(fit_dir, 'GUESSING-m0_(spline)-(\\d{3})\\-c[1234].rds'),
                                               colnames = c('model', 'roi'),
                                               process_data_function = 
@@ -212,6 +212,6 @@ rez_list <- lapply(collect_data_list, \(x){
 rez_df <- rbindlist(unlist(unlist(unlist(rez_list, recursive = FALSE), recursive = FALSE), recursive = FALSE))
 
 message('Writing data to rez_df.rds')
-saveRDS(rez_df, file = file.path(basepath, 'roi_model_results_test.rds'))
+saveRDS(rez_df, file = file.path(basepath, 'roi_model_results.rds'))
 
 

@@ -10,6 +10,10 @@ regex <- '([\\w-]+)-\\d{2}_([LR])-(\\w+)'
 CA_label_ids[, c('LABEL', 'network', 'hemi', 'anat') := transpose(stri_match_all_regex(LABEL, regex))]
 setnames(CA_label_ids, 'INDEX', 'roi_num')
 
+subcort <- unique(CA_label_ids[anat != "Ctx", c('anat')])
+subcort[, roi_num := 360 + 1:.N]
+CA_label_ids <- rbindlist(list(CA_label_ids[roi_num <= 360], subcort), fill = TRUE)
+
 traj_data_l <- readRDS('group_level_roi/guessing_spline_contrasts.rds')
 traj_data <- rbindlist(unlist(unlist(traj_data_l, recursive = FALSE), recursive = FALSE))
 traj_data[, roi_num := as.integer(roi)]
