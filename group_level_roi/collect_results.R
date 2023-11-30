@@ -1,4 +1,5 @@
 .libPaths(new = c('/ncf/mclaughlin/users/jflournoy/R/x86_64-pc-linux-gnu-library/verse-4.3.1', .libPaths()))
+options(future.globals.onReference = NULL)
 Sys.setenv(R_PROGRESSR_ENABLE=TRUE)
 library(data.table)
 library(brms)
@@ -42,6 +43,15 @@ make_newdata_guessing <- function(fit){
   conditions <- unique(fit$data$condition_fac)
   newdata <- as.data.table(expand.grid(age_c10 = age_seq, condition_fac = conditions, SE = 0))
   return(newdata)
+}
+
+make_get_r2 <- function(){
+  get_r2 <- function(x){
+    require(brms)
+    r2 <- as.data.table(brms::bayes_R2(x))
+    return(r2)
+  }
+  return(get_r2)
 }
 
 prediction_posteriors <- function(newdata_function, contrasts, dcast_col = 'condition_fac', posterior_by_col = 'age_c10'){
@@ -103,6 +113,7 @@ prediction_posteriors <- function(newdata_function, contrasts, dcast_col = 'cond
   }
   return(ret_func)
 }
+
 run_process_data_function <- function(x, process_data_function, p){
   #x <- some_fns[[1]]
   #x <- fit_files[1:4, ]
@@ -115,11 +126,11 @@ run_process_data_function <- function(x, process_data_function, p){
   out_data_list <- lapply(process_data_function, \(f){
     tryCatch({
       out_data <- f(fit)
-      out_data <- cbind(x[1], out_data, fill = TRUE)},
+      out_data <- cbind(x[1], out_data)},
       error = {out_data <- x[1]})
     return(out_data)
   })
-  p(message = sprintf('%s', x$file))
+  p(message = sprintf('%s', x$file[[1]]))
   return(out_data_list)
 }
 
@@ -161,31 +172,39 @@ if(grepl('group_level_roi', getwd())){
 }
 fit_dir <- file.path(basepath, 'fits')
 
-collect_data_list <- list(carit_spline = list(data_fn = file.path(basepath, 'carit-prevcond_spline_contrasts.rds'),
-                                              pattern = '^m0_spline-\\d{3}-c[1234].*\\.rds',
-                                              regex = file.path(fit_dir, 'm0_(spline)-(\\d{3})\\-c[1234].rds'),
-                                              colnames = c('model', 'roi'),
-                                              process_data_function = 
-                                                list(prediction_posteriors(newdata_function = make_newdata_carit,
-                                                                           contrasts = list(
-                                                                             CR = '(1/3)*(CR_2go + CR_3go + CR_4go)',
-                                                                             Hit = '(1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
-                                                                             CRmHit = '(1/3)*(CR_2go + CR_3go + CR_4go) - (1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
-                                                                             GoxPrepot = '(1/3)*(Hit_1go + Hit_2go + Hit_3go) - Hit_4go',
-                                                                             CRxPrepot = '(1/2)*(CR_2go + CR_3go) - CR_4go')))),
-                          guessing_spline = list(data_fn = file.path(basepath, 'guessing_spline_contrasts.rds'),
-                                              pattern = '^GUESSING-m0_spline-\\d{3}-c[1234].*\\.rds',
-                                              regex = file.path(fit_dir, 'GUESSING-m0_(spline)-(\\d{3})\\-c[1234].rds'),
-                                              colnames = c('model', 'roi'),
-                                              process_data_function = 
-                                                list(prediction_posteriors(newdata_function = make_newdata_guessing,
-                                                                           contrasts = list(
-                                                                             CueHighmCueLow = 'CUE_HIGH - CUE_LOW',
-                                                                             FBWinmFBLoss = '(1/2)*(FEEDBACK_HIGH_WIN + FEEDBACK_LOW_WIN) - (1/2)*(FEEDBACK_HIGH_LOSE + FEEDBACK_LOW_LOSE)'
-                                                                           )))))
+collect_data_list <- list(
+  carit_spline = list(
+    data_fn = file.path(basepath, 'carit-prevcond_spline_contrasts.rds'),
+    pattern = '^m0_spline-\\d{3}-c[1234].*\\.rds',
+    regex = file.path(fit_dir, 'm0_(spline)-(\\d{3})\\-c[1234].rds'),
+    colnames = c('model', 'roi'),
+    process_data_function = 
+      list(prediction_posteriors(newdata_function = make_newdata_carit,
+                                 contrasts = list(
+                                   CR = '(1/3)*(CR_2go + CR_3go + CR_4go)',
+                                   Hit = '(1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
+                                   CRmHit = '(1/3)*(CR_2go + CR_3go + CR_4go) - (1/4)*(Hit_1go + Hit_2go + Hit_3go + Hit_4go)',
+                                   GoxPrepot = '(1/3)*(Hit_1go + Hit_2go + Hit_3go) - Hit_4go',
+                                   CRxPrepot = '(1/2)*(CR_2go + CR_3go) - CR_4go')),
+           r2 = make_get_r2())
+  ),
+  guessing_spline = list(
+    data_fn = file.path(basepath, 'guessing_spline_contrasts.rds'),
+    pattern = '^GUESSING-m0_spline-\\d{3}-c[1234].*\\.rds',
+    regex = file.path(fit_dir, 'GUESSING-m0_(spline)-(\\d{3})\\-c[1234].rds'),
+    colnames = c('model', 'roi'),
+    process_data_function = 
+      list(age_pred = prediction_posteriors(newdata_function = make_newdata_guessing,
+                                            contrasts = list(
+                                              CueHighmCueLow = 'CUE_HIGH - CUE_LOW',
+                                              FBWinmFBLoss = '(1/2)*(FEEDBACK_HIGH_WIN + FEEDBACK_LOW_WIN) - (1/2)*(FEEDBACK_HIGH_LOSE + FEEDBACK_LOW_LOSE)'
+                                            )), 
+           r2 = make_get_r2())
+  )
+)
 
-#collect_data_list=collect_data_list[1]
-#x <- collect_data_list[[1]]
+# collect_data_list=collect_data_list[2]
+# x <- collect_data_list[[2]]
 rez_list <- lapply(collect_data_list, \(x){
   if(!file.exists(x$data_fn)){
     
@@ -193,25 +212,34 @@ rez_list <- lapply(collect_data_list, \(x){
     fit_files <- parse_filenames(dir(fit_dir, pattern = x$pattern, full.names = TRUE),
                                  regex = x$regex,
                                  colnames = x$colnames)
+    # fit_files <- fit_files[1:32,]
     split_cols <- x$colnames
-    p <- progressr::progressor(along = fit_files$file)
+    with_progress({ p <- progressr::progressor(along = fit_files$file)
     rez_data <- parallel_process_data_file(x = fit_files, 
                                            process_data_function = x$process_data_function, 
                                            split_cols = split_cols, 
                                            cpus_total = cpus_total,
                                            p = p)
+    })
+    proc_func_names <- names(x$process_data_function)
+    names(proc_func_names) <- proc_func_names
+    if(length(proc_func_names) > 1){
+      proc_rez_data <- lapply(proc_func_names, \(pname){
+        outer_list <- lapply(rez_data, \(outer_item){
+          inner_list <- lapply(outer_item, \(inner_item){
+            inner_item[[pname]]
+          })
+        })
+        return(unlist(outer_list, recursive = FALSE))
+      })
+    }
     message(sprintf('Done. Writing data to %s', x$data_fn))
-    saveRDS(rez_data, file = x$data_fn)
+    saveRDS(proc_rez_data, file = x$data_fn)
   } else {
     message(sprintf('Reading data from %s', x$data_fn))
-    rez_data <- readRDS(file = x$data_fn)
+    proc_rez_data <- readRDS(file = x$data_fn)
   }
-  return(rez_data)
+  return(proc_rez_data)
 })
-
-rez_df <- rbindlist(unlist(unlist(unlist(rez_list, recursive = FALSE), recursive = FALSE), recursive = FALSE))
-
-message('Writing data to rez_df.rds')
-saveRDS(rez_df, file = file.path(basepath, 'roi_model_results.rds'))
 
 
