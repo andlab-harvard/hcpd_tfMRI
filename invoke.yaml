@@ -16,4 +16,6 @@ R_cmd_beh_model: "fit_behavioral_model.R"
 R_cmd_roi_model_run_dir: "group_level_roi"
 R_cmd_roi_model: "roi_model.R"
 R_cmd_collect_results: "collect_results.R"
+R_cmd_make_guessing_vwise: "guessing_make_group_model.R"
+R_cmd_make_carit_vwise: "carit_make_group_model.R"
 

@@ -990,7 +990,7 @@ def collect_roi_model_results(c, clean: bool=False, test: bool=False):
 
     # Set SLURM job parameters
     NCPU = "16"
-    reserved_mem = "32G"
+    reserved_mem = "96G"
     time_limit = "1-00:00"
     sbatch_template = f"""
 #!/bin/bash
@@ -1019,7 +1019,7 @@ EOF
         else:
             exec_dir = '.'
         with c.cd(exec_dir):
-            datadoer.logger.info(f"Running in {os.getcwd()}")
+            datadoer.logger.info(f"Running in group_level_roi/")
             sbatch_result = c.run(cmd)
         # Log the stdout and stderr of the sbatch command
         datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
@@ -1122,8 +1122,77 @@ EOF
         job_log_string = os.path.join(log_dir, f"*{job_number[1]}*")
         datadoer.logger.info(f"Sbatch job log: {job_log_string}")
 
+@task
+def run_vwise_model(c, task: str):
+    """
+    Run models for each ROI in parallel using SLURM.
+
+    Args:
+    - c: Invoke context object.
+    - task: str, name of the fMRI task to fit the model to
+
+    Returns: None
+    """
+
+    # Instantiate HCPDDataDoer without datab
+    # ase access
+
+    datadoer = HCPDDataDoer(c, no_db = True)
+    sbatch_template = """
+#!/bin/bash
+#SBATCH -J vwise-HCPD
+#SBATCH -c 1
+#SBATCH --mem=4G
+#SBATCH -t 4:00
+#SBATCH -o vwise-%A.log
+{sbatch_header}
+cd {hcpd_task_dir}
+{r_cmd}
+EOF
+"""
+    if task == 'GUESSING':
+        # Format the R command for the specified model
+        r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_make_guessing_vwise])
+        simple_contrast_list = ["TASK",
+                                "CUE_AVG", 
+                                "CUE_HIGH", 
+                                "CUE_LOW", 
+                                "GUESS", 
+                                "FEEDBACK_AVG", 
+                                "FEEDBACK_AVG_WIN", 
+                                "FEEDBACK_AVG_LOSE", 
+                                "FEEDBACK_AVG_WIN-LOSE", 
+                                "FEEDBACK_HIGH_WIN", 
+                                "FEEDBACK_HIGH_LOSE", 
+                                "FEEDBACK_LOW_WIN", 
+                                "FEEDBACK_LOW_LOSE", 
+                                "FEEDBACK_HIGH-LOW_WIN", 
+                                "FEEDBACK_HIGH-LOW_LOSE", 
+                                "FEEDBACK-CUE_AVG"]
+        cmd_list = []
+        for contrast in simple_contrast_list:
+            contrast_r_cmd = r_cmd + f""" ++name {contrast.replace('-', '_')} \\
+++outdir /ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/ \\
+++design simple \\
+++simple-design {contrast} \\
+++covariates scanner RelativeRMS_mean_c"""
+            contrast_sbatch = sbatch_template.format(sbatch_header = c.sbatch_header, 
+                                                     hcpd_task_dir=c.R_cmd_beh_model_run_dir, 
+                                                     r_cmd=contrast_r_cmd)
+            cmd_list.append(f"sbatch <<EOF {contrast_sbatch}")
+    else:
+        raise ValueError("Task not specified correctly")
+    
+    for cmd in cmd_list:
+        # Log the sbatch command and R command
+        datadoer.logger.debug(f"Sbatch Command:\n\n{cmd}")
+        datadoer.logger.info(f"R Command:\n{r_cmd}")
+        sbatch_result = c.run(cmd)
+        job_number = re.match(r'Submitted batch job (\d+)', sbatch_result.stdout)
+        datadoer.logger.info(f"Sbatch job: {job_number[1]}")
+
 # Define a collection of tasks
 ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh, fit_behavior_model, fit_kfold,
-                collect_roi_model_results, run_roi_models)
+                collect_roi_model_results, run_roi_models, run_vwise_model)
 # Configure the collection with logging settings
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})
