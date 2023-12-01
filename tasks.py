@@ -1123,7 +1123,7 @@ EOF
         datadoer.logger.info(f"Sbatch job log: {job_log_string}")
 
 @task
-def run_vwise_model(c, task: str):
+def make_vwise_group_model(c, task: str, run: bool=False):
     """
     Run models for each ROI in parallel using SLURM.
 
@@ -1138,7 +1138,37 @@ def run_vwise_model(c, task: str):
     # ase access
 
     datadoer = HCPDDataDoer(c, no_db = True)
-    sbatch_template = """
+
+    GUESSING_simple_contrast_list = ["TASK",
+                                    "CUE_AVG", 
+                                    "CUE_HIGH", 
+                                    "CUE_LOW", 
+                                    "GUESS", 
+                                    "FEEDBACK_AVG", 
+                                    "FEEDBACK_AVG_WIN", 
+                                    "FEEDBACK_AVG_LOSE", 
+                                    "FEEDBACK_AVG_WIN-LOSE", 
+                                    "FEEDBACK_HIGH_WIN", 
+                                    "FEEDBACK_HIGH_LOSE", 
+                                    "FEEDBACK_LOW_WIN", 
+                                    "FEEDBACK_LOW_LOSE", 
+                                    "FEEDBACK_HIGH-LOW_WIN", 
+                                    "FEEDBACK_HIGH-LOW_LOSE", 
+                                    "FEEDBACK-CUE_AVG"]
+    if run:
+        if task == 'GUESSING':
+            for contrast in GUESSING_simple_contrast_list:
+                f_contrast = contrast.replace('-', '_')
+                run_dir = f"/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING/{f_contrast}"
+                datadoer.logger.info(f"run_dir: {run_dir}")
+                with c.cd(run_dir):
+                    run_cmd = f"sbatch /ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING/{f_contrast}/SwE_sbatch_{f_contrast}.bash"
+                    datadoer.logger.info(f"run_cmd: {run_cmd}")
+                    run_result = c.run(run_cmd)
+                datadoer.logger.info(f"{run_result}")
+
+    else:
+        sbatch_template = """
 #!/bin/bash
 #SBATCH -J vwise-HCPD
 #SBATCH -c 1
@@ -1150,49 +1180,39 @@ cd {hcpd_task_dir}
 {r_cmd}
 EOF
 """
-    if task == 'GUESSING':
-        # Format the R command for the specified model
-        r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_make_guessing_vwise])
-        simple_contrast_list = ["TASK",
-                                "CUE_AVG", 
-                                "CUE_HIGH", 
-                                "CUE_LOW", 
-                                "GUESS", 
-                                "FEEDBACK_AVG", 
-                                "FEEDBACK_AVG_WIN", 
-                                "FEEDBACK_AVG_LOSE", 
-                                "FEEDBACK_AVG_WIN-LOSE", 
-                                "FEEDBACK_HIGH_WIN", 
-                                "FEEDBACK_HIGH_LOSE", 
-                                "FEEDBACK_LOW_WIN", 
-                                "FEEDBACK_LOW_LOSE", 
-                                "FEEDBACK_HIGH-LOW_WIN", 
-                                "FEEDBACK_HIGH-LOW_LOSE", 
-                                "FEEDBACK-CUE_AVG"]
-        cmd_list = []
-        for contrast in simple_contrast_list:
-            contrast_r_cmd = r_cmd + f""" ++name {contrast.replace('-', '_')} \\
-++outdir /ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/ \\
+        if task == 'GUESSING':
+            outdir = "/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING"
+            if not os.path.isdir(outdir):
+                os.makedirs(outdir)
+            # Format the R command for the specified model
+            r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_make_guessing_vwise])
+            
+            cmd_list = []
+            for contrast in GUESSING_simple_contrast_list:
+                contrast_r_cmd = r_cmd + f""" ++name {contrast.replace('-', '_')} \\
+++outdir {outdir} \\
 ++design simple \\
 ++simple-design {contrast} \\
-++covariates scanner RelativeRMS_mean_c"""
-            contrast_sbatch = sbatch_template.format(sbatch_header = c.sbatch_header, 
-                                                     hcpd_task_dir=c.R_cmd_beh_model_run_dir, 
-                                                     r_cmd=contrast_r_cmd)
-            cmd_list.append(f"sbatch <<EOF {contrast_sbatch}")
-    else:
-        raise ValueError("Task not specified correctly")
-    
-    for cmd in cmd_list:
-        # Log the sbatch command and R command
-        datadoer.logger.debug(f"Sbatch Command:\n\n{cmd}")
-        datadoer.logger.info(f"R Command:\n{r_cmd}")
-        sbatch_result = c.run(cmd)
-        job_number = re.match(r'Submitted batch job (\d+)', sbatch_result.stdout)
-        datadoer.logger.info(f"Sbatch job: {job_number[1]}")
+++covariates scanner RelativeRMS_mean_c \\
+++exclusionsfile ~/code/hcpd_tfMRI/qc/HCPD-exclusions.csv \\
+++exclude auto"""
+                contrast_sbatch = sbatch_template.format(sbatch_header = c.sbatch_header, 
+                                                        hcpd_task_dir=c.R_cmd_beh_model_run_dir, 
+                                                        r_cmd=contrast_r_cmd)
+                cmd_list.append(f"sbatch <<EOF {contrast_sbatch}")
+        else:
+            raise ValueError("Task not specified correctly")
+        
+        for cmd in cmd_list:
+            # Log the sbatch command and R command
+            datadoer.logger.debug(f"Sbatch Command:\n\n{cmd}")
+            datadoer.logger.info(f"R Command:\n{r_cmd}")
+            sbatch_result = c.run(cmd)
+            job_number = re.match(r'Submitted batch job (\d+)', sbatch_result.stdout)
+            datadoer.logger.info(f"Sbatch job: {job_number[1]}")
 
 # Define a collection of tasks
 ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh, fit_behavior_model, fit_kfold,
-                collect_roi_model_results, run_roi_models, run_vwise_model)
+                collect_roi_model_results, run_roi_models, make_vwise_group_model)
 # Configure the collection with logging settings
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})

@@ -3,7 +3,7 @@
 %% spm SPM - SPM12 (7771)
 %% cfg_basicio BasicIO - Unknown
 %%-----------------------------------------------------------------------
-matlabbatch{1}.spm.tools.swe.smodel.dir = {'/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/___MODELDIR___'};
+matlabbatch{1}.spm.tools.swe.smodel.dir = {'___MODELDIR___'};
 matlabbatch{1}.spm.tools.swe.smodel.scans = {
                                              ___SCANS___
                                              };
@@ -27,4 +27,4 @@ matlabbatch{1}.spm.tools.swe.smodel.WB.WB_no = 0;
 matlabbatch{1}.spm.tools.swe.smodel.globalc.g_omit = 1;
 matlabbatch{1}.spm.tools.swe.smodel.globalm.gmsca.gmsca_no = 1;
 matlabbatch{1}.spm.tools.swe.smodel.globalm.glonorm = 1;
-matlabbatch{2}.spm.tools.swe.rmodel.des = {'/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/___MODELDIR___/SwE.mat'};
+matlabbatch{2}.spm.tools.swe.rmodel.des = {'___MODELDIR___/SwE.mat'};

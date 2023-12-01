@@ -3,7 +3,7 @@
 %% spm SPM - SPM12 (7771)
 %% cfg_basicio BasicIO - Unknown
 %%-----------------------------------------------------------------------
-matlabbatch{1}.spm.tools.swe.smodel.dir = {'/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/FEEDBACK_HIGH_LOW_WIN'};
+matlabbatch{1}.spm.tools.swe.smodel.dir = {'/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING/FEEDBACK_HIGH_LOW_WIN'};
 matlabbatch{1}.spm.tools.swe.smodel.scans = {
                                              '/ncf/hcp/data/HCD-tfMRI-MultiRunFix/HCD0001305_V1_MR/MNINonLinear/Results/tfMRI_GUESSING_PA/tfMRI_GUESSING_PA_hp200_s4_level1_hp0_clean.feat/GrayordinatesStats/cope14.dtseries.nii,1'
 '/ncf/hcp/data/HCD-tfMRI-MultiRunFix/HCD0001305_V1_MR/MNINonLinear/Results/tfMRI_GUESSING_AP/tfMRI_GUESSING_AP_hp200_s4_level1_hp0_clean.feat/GrayordinatesStats/cope14.dtseries.nii,1'
@@ -4195,4 +4195,4 @@ matlabbatch{1}.spm.tools.swe.smodel.WB.WB_no = 0;
 matlabbatch{1}.spm.tools.swe.smodel.globalc.g_omit = 1;
 matlabbatch{1}.spm.tools.swe.smodel.globalm.gmsca.gmsca_no = 1;
 matlabbatch{1}.spm.tools.swe.smodel.globalm.glonorm = 1;
-matlabbatch{2}.spm.tools.swe.rmodel.des = {'/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/FEEDBACK_HIGH_LOW_WIN/SwE.mat'};
+matlabbatch{2}.spm.tools.swe.rmodel.des = {'/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING/FEEDBACK_HIGH_LOW_WIN/SwE.mat'};
