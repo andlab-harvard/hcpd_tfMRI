@@ -777,7 +777,7 @@ EOF
     datadoer.shutdown()
 
 @task
-def cifti_thresh(c, cifti, surfaces_dir="group_level_vwise/surface", z=5, mm2=9, mm3=21):
+def cifti_thresh(c, cifti_file, cifti_dir, surfaces_dir="group_level_vwise/surface", z: float=5.5, mm2=9, mm3=21, test=False):
     """
     Apply a threshold to a CIFTI file and produce associated outputs.
 
@@ -807,39 +807,45 @@ def cifti_thresh(c, cifti, surfaces_dir="group_level_vwise/surface", z=5, mm2=9,
                          'join_clust_cmd': None}
     
     datadoer = HCPDDataDoer(c, no_db = True)
-    datadoer.logger.info(f"Creating thresholded map for {cifti}")
+    datadoer.logger.info(f"Creating thresholded map for `{cifti_file}`s in `{cifti_dir}`")
 
-    try:
-        if not os.path.exists(cifti):
+    if not os.path.exists(cifti_dir):
             raise ValueError("No file found")
-        cifti_base = re.match('(.*)\.dtseries\.nii', cifti)
-        if cifti_base:
-            cifti_base = cifti_base[1]
-        else:
-            raise ValueError("Cannot parse filename")
-        cifti_pos_out = f"{cifti_base}_posclust.dtseries.nii"
-        cifti_neg_out = f"{cifti_base}_negclust.dtseries.nii"
-        cifti_out = f"{cifti_base}_clust.dtseries.nii"
-        datadoer.logger.info(f"Out file is {cifti_out}")
+    for root, dirs, files in os.walk(cifti_dir):
+        for file in files:
+            if file == cifti_file:
+                cifti = os.path.join(root, file)
+                try:
+                    
+                    cifti_base = re.match('(.*)\.dtseries\.nii', cifti)
+                    if cifti_base:
+                        cifti_base = cifti_base[1]
+                    else:
+                        raise ValueError("Cannot parse filename")
+                    cifti_pos_out = f"{cifti_base}_posclust.dtseries.nii"
+                    cifti_neg_out = f"{cifti_base}_negclust.dtseries.nii"
+                    cifti_out = f"{cifti_base}_clust.dtseries.nii"
+                    datadoer.logger.info(f"Out file is {cifti_out}")
 
-        #Ensure we load the modules and run one big command joined by && 
-        with c.prefix("module load ncf/1.0.0-fasrc01 connectome_workbench/1.5.0-centos6_x64-ncf"):
-            pos_clust_cmd = f"wb_command -cifti-find-clusters {cifti} {z} {mm2} {z} {mm3} COLUMN {cifti_pos_out} -left-surface {os.path.join(surfaces_dir, 'S1200.L.inflated_MSMAll.32k_fs_LR.surf.gii')} -right-surface {os.path.join(surfaces_dir, 'S1200.R.inflated_MSMAll.32k_fs_LR.surf.gii')}"
-            neg_clust_cmd = f"wb_command -cifti-find-clusters {cifti} {-z} {mm2} {-z} {mm3} COLUMN {cifti_neg_out} -less-than -left-surface {os.path.join(surfaces_dir, 'S1200.L.inflated_MSMAll.32k_fs_LR.surf.gii')} -right-surface {os.path.join(surfaces_dir, 'S1200.R.inflated_MSMAll.32k_fs_LR.surf.gii')}"
-            join_clust_cmd = f"wb_command -cifti-math '100 * (x + y)' {cifti_out} -var x {cifti_pos_out} -var y {cifti_neg_out}"
-            cmd_out = c.run(' && '.join([pos_clust_cmd, neg_clust_cmd, join_clust_cmd]))
-        
-        # Check if the clustered CIFTI file was generated and log/store the results
-        if os.path.exists(cifti_out):
-            datadoer.logger.info(f"Sucessfully created {cifti_out}")
-            clust_config_dict['pos_clust_cmd'] = pos_clust_cmd
-            clust_config_dict['neg_clust_cmd'] = neg_clust_cmd
-            clust_config_dict['join_clust_cmd'] = join_clust_cmd
-            pd.DataFrame([clust_config_dict]).to_csv(f"{cifti_base}_clust.csv")
-        else:
-            raise FileNotFoundError(f"Failed to create {cifti_out}")
-    except Exception as e:
-        datadoer.logger.error(f"Could not make cluster threshold map: {e}.")
+                    #Ensure we load the modules and run one big command joined by && 
+                    with c.prefix("module load ncf/1.0.0-fasrc01 connectome_workbench/1.5.0-centos6_x64-ncf"):
+                        pos_clust_cmd = f"wb_command -cifti-find-clusters {cifti} {z} {mm2} {z} {mm3} COLUMN {cifti_pos_out} -left-surface {os.path.join(surfaces_dir, 'S1200.L.inflated_MSMAll.32k_fs_LR.surf.gii')} -right-surface {os.path.join(surfaces_dir, 'S1200.R.inflated_MSMAll.32k_fs_LR.surf.gii')}"
+                        neg_clust_cmd = f"wb_command -cifti-find-clusters {cifti} {-z} {mm2} {-z} {mm3} COLUMN {cifti_neg_out} -less-than -left-surface {os.path.join(surfaces_dir, 'S1200.L.inflated_MSMAll.32k_fs_LR.surf.gii')} -right-surface {os.path.join(surfaces_dir, 'S1200.R.inflated_MSMAll.32k_fs_LR.surf.gii')}"
+                        join_clust_cmd = f"wb_command -cifti-math '100 * (x + y)' {cifti_out} -var x {cifti_pos_out} -var y {cifti_neg_out}"
+                        if not test:
+                            cmd_out = c.run(' && '.join([pos_clust_cmd, neg_clust_cmd, join_clust_cmd]))
+                    
+                    # Check if the clustered CIFTI file was generated and log/store the results
+                    if not test and os.path.exists(cifti_out):
+                        datadoer.logger.info(f"Sucessfully created {cifti_out}")
+                        clust_config_dict['pos_clust_cmd'] = pos_clust_cmd
+                        clust_config_dict['neg_clust_cmd'] = neg_clust_cmd
+                        clust_config_dict['join_clust_cmd'] = join_clust_cmd
+                        pd.DataFrame([clust_config_dict]).to_csv(f"{cifti_base}_clust.csv")
+                    elif not test:
+                        raise FileNotFoundError(f"Failed to create {cifti_out}")
+                except Exception as e:
+                    datadoer.logger.error(f"Could not make cluster threshold map: {e}.")
 
 @task
 def fit_kfold(c, model, test=False, testprop=.0125, refit=False, nfolds=5, long=False, onlylong=False):
