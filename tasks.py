@@ -1,5 +1,6 @@
 import os
 import re
+import glob
 import shutil
 import inspect
 import logging
@@ -9,6 +10,16 @@ import numpy as np
 import pyarrow.feather as feather
 from invoke import task, Collection
 from multiprocessing import Process, Manager, cpu_count
+
+"""
+This file contains the tasks for the HCPD task-based fMRI analysis pipeline. Some tasks depend on other tasks! The rough order can be found below:
+
+1. ...
+...
+4. Before you threshold the cifti files you actuall have to open up matlab and run the results display for SwE.
+5. Then you can run the thresholding task.
+
+"""
 
 
 class HCPDDataDoer:
@@ -733,6 +744,7 @@ def combine_parcellated_data(c, task: str, parallel=False, test=False):
 
     Args:
         c: Invoke context object.
+
         task (str): Task name. Valid tasks are "CARIT_PREPOT", "CARIT_PREVCOND", and "GUESSING".
         parallel (bool, optional): Whether to run the job in parallel. Defaults to False.
         test (bool, optional): Whether to run the job in test mode. Defaults to False.
@@ -776,8 +788,26 @@ EOF
         datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
     datadoer.shutdown()
 
+
 @task
-def cifti_thresh(c, cifti_file, cifti_dir, surfaces_dir="group_level_vwise/surface", z: float=5.5, mm2=9, mm3=21, test=False):
+def make_cluster_maps(c, task, contrast=None, surfaces_dir="group_level_vwise/surface", z: float=6.896376, mm2=100, mm3=125, test=False):
+    datadoer = HCPDDataDoer(c, no_db = True)
+
+    if task == "GUESSING":
+        GUESSING_simple_contrast_list = c.GUESSING_simple_contrast_list
+        if contrast is not None:
+            GUESSING_simple_contrast_list = [x for x in GUESSING_simple_contrast_list if x == contrast]
+        for contrast_list_item in GUESSING_simple_contrast_list:
+            d_contrast = contrast_list_item.replace('-', '_')
+            cifti_file = "swe_dpx_zTstat_c01.dtseries.nii"
+            cifti_dir = os.path.join("group_level_vwise", "GUESSING", d_contrast)
+            cifti_thresh(c, cifti_file, cifti_dir, surfaces_dir=surfaces_dir, z=z, mm2=mm2, mm3=mm3, test=test)
+    else:
+        datadoer.logger.error(f"Task {task} not implemented.")
+        raise NotImplementedError(f"Task {task} not implemented.")
+
+
+def cifti_thresh(c, cifti_file, cifti_dir, surfaces_dir="group_level_vwise/surface", z: float=6.896376, mm2=9, mm3=21, test=False):
     """
     Apply a threshold to a CIFTI file and produce associated outputs.
 
@@ -785,7 +815,7 @@ def cifti_thresh(c, cifti_file, cifti_dir, surfaces_dir="group_level_vwise/surfa
     - c: A context or command interface object.
     - cifti: Path to the CIFTI file to threshold.
     - surfaces_dir (optional): Path to the surfaces directory. Default is "group_level_vwise/surface".
-    - z (optional): z score cutoff. Default is 5.
+    - z (optional): z score cutoff. Default is 6.896376. 
     - mm2 (optional): Minimum surface area size. Default is 9.
     - mm3 (optional): Minimum volume size. Default is 21.
 
@@ -1129,51 +1159,59 @@ EOF
         datadoer.logger.info(f"Sbatch job log: {job_log_string}")
 
 @task
-def make_vwise_group_model(c, task: str, run: bool=False):
+def make_vwise_group_model(c, task: str, run: bool=False, clean: bool=False):
     """
-    Run models for each ROI in parallel using SLURM.
+    Make gray-ordinate-wise (vwise) models. After they are made you can rerun this with `-r` to run the models. The task output directory should be clean.
 
     Args:
     - c: Invoke context object.
     - task: str, name of the fMRI task to fit the model to
+    - run: bool, whether to run the models after they are made (default: False)
+    - clean: bool, whether to clean the output directories before making the models (default: False)
 
     Returns: None
     """
-
-    # Instantiate HCPDDataDoer without datab
-    # ase access
-
+    # Instantiate HCPDDataDoer without database access
     datadoer = HCPDDataDoer(c, no_db = True)
 
-    GUESSING_simple_contrast_list = ["TASK",
-                                    "CUE_AVG", 
-                                    "CUE_HIGH", 
-                                    "CUE_LOW", 
-                                    "GUESS", 
-                                    "FEEDBACK_AVG", 
-                                    "FEEDBACK_AVG_WIN", 
-                                    "FEEDBACK_AVG_LOSE", 
-                                    "FEEDBACK_AVG_WIN-LOSE", 
-                                    "FEEDBACK_HIGH_WIN", 
-                                    "FEEDBACK_HIGH_LOSE", 
-                                    "FEEDBACK_LOW_WIN", 
-                                    "FEEDBACK_LOW_LOSE", 
-                                    "FEEDBACK_HIGH-LOW_WIN", 
-                                    "FEEDBACK_HIGH-LOW_LOSE", 
-                                    "FEEDBACK-CUE_AVG"]
-    if run:
+    if task == 'GUESSING':
+        outdir = c.vwise_group_outdir_GUESSING
+    
+    if clean:
+        # Remove directories in outdir
         if task == 'GUESSING':
-            for contrast in GUESSING_simple_contrast_list:
+            for contrast in c.GUESSING_simple_contrast_list:
+                dir_name = os.path.join(outdir, contrast.replace('-', '_'))
+                if os.path.isdir(dir_name):
+                    datadoer.logger.info(f"Removing {dir_name}")
+                    shutil.rmtree(dir_name)
+            # Remove PNG files
+            png_files = glob.glob(os.path.join(outdir, '*.png'))
+            for png_file in png_files:
+                datadoer.logger.info(f"Removing {png_file}")
+                os.remove(png_file)
+    elif run:
+        if task == 'GUESSING':
+            for contrast in c.GUESSING_simple_contrast_list:
                 f_contrast = contrast.replace('-', '_')
-                run_dir = f"/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING/{f_contrast}"
+                run_dir = os.path.join(outdir, f_contrast)
                 datadoer.logger.info(f"run_dir: {run_dir}")
                 with c.cd(run_dir):
-                    run_cmd = f"sbatch /ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING/{f_contrast}/SwE_sbatch_{f_contrast}.bash"
+                    batch_script_path = os.path.join(run_dir, f"SwE_sbatch_{f_contrast}.bash")
+                    run_cmd = f"sbatch {batch_script_path}"
                     datadoer.logger.info(f"run_cmd: {run_cmd}")
                     run_result = c.run(run_cmd)
                 datadoer.logger.info(f"{run_result}")
-
     else:
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
+        else:
+            subdirectories = [name for name in os.listdir(outdir) if name in c.GUESSING_simple_contrast_list and os.path.isdir(os.path.join(outdir, name))]
+            datadoer.logger.debug(f"Found subdirectories: {subdirectories}")
+            if subdirectories:
+                datadoer.logger.error(f"Subdirectories found in output directory: {outdir}. Clean with `-c` flag.")
+                raise Exception(f"Subdirectories found in output directory: {outdir}")
+
         sbatch_template = """
 #!/bin/bash
 #SBATCH -J vwise-HCPD
@@ -1187,21 +1225,18 @@ cd {hcpd_task_dir}
 EOF
 """
         if task == 'GUESSING':
-            outdir = "/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING"
-            if not os.path.isdir(outdir):
-                os.makedirs(outdir)
             # Format the R command for the specified model
             r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_make_guessing_vwise])
-            
             cmd_list = []
-            for contrast in GUESSING_simple_contrast_list:
+            for contrast in c.GUESSING_simple_contrast_list:
                 contrast_r_cmd = r_cmd + f""" ++name {contrast.replace('-', '_')} \\
 ++outdir {outdir} \\
 ++design simple \\
 ++simple-design {contrast} \\
 ++covariates scanner RelativeRMS_mean_c \\
 ++exclusionsfile ~/code/hcpd_tfMRI/qc/HCPD-exclusions.csv \\
-++exclude auto"""
+++exclude auto \\
+++long"""
                 contrast_sbatch = sbatch_template.format(sbatch_header = c.sbatch_header, 
                                                         hcpd_task_dir=c.R_cmd_beh_model_run_dir, 
                                                         r_cmd=contrast_r_cmd)
@@ -1218,7 +1253,7 @@ EOF
             datadoer.logger.info(f"Sbatch job: {job_number[1]}")
 
 # Define a collection of tasks
-ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, cifti_thresh, fit_behavior_model, fit_kfold,
+ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, make_cluster_maps, fit_behavior_model, fit_kfold,
                 collect_roi_model_results, run_roi_models, make_vwise_group_model)
 # Configure the collection with logging settings
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})

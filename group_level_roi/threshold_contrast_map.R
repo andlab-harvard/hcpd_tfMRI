@@ -1,32 +1,31 @@
-## R setup
-rm(list = ls())
-setwd('/ncf/hcp/data/analyses/myelin/fmri_test/')
-
 library(ciftiTools)
-ciftiTools.setOption('wb_path', '/n/helmod/apps/centos7/Core/connectome-workbench/1.3.2-fasrc01/')  
+ciftiTools.setOption('wb_path', '/n/sw/ncf/apps/connectome_workbench/1.3.2/workbench/bin_rh_linux64')  
 
 #####################################
 ## Correct Rejection - GO Contrast ##
 #####################################
 
 ## Load Connectome workbench
-system("module load connectome-workbench/1.3.2-fasrc01")
 
-## Read in CR-GO contrast xifti file
-CR_minus_Go_xifti <- ciftiTools::read_xifti("/ncf/hcp/data/analyses/myelin/fmri_test/data/swe_dpx_zTstat_c01.dtseries.nii", brainstructures="all")
+## Read in CR-GO contrast cifti file
+CUE_AVG_xifti <- ciftiTools::read_xifti("group_level_vwise/GUESSING/CUE_AVG/swe_dpx_zTstat_c01.dtseries.nii", 
+                                        brainstructures = "all",
+                                        surfL_fname = 'group_level_vwise/surface/S1200.L.inflated_MSMAll.32k_fs_LR.surf.gii',
+                                        surfR_fname = 'group_level_vwise/surface/S1200.R.inflated_MSMAll.32k_fs_LR.surf.gii')
 
-summary(CR_minus_Go_xifti)
+summary(CUE_AVG_xifti)
+#view_cifti(CUE_AVG_xifti)
 
 ## Separate data by hemisphere and subcortex
-vertex_lh_data <- unlist(CR_minus_Go_xifti$data[1])
-vertex_rh_data <- unlist(CR_minus_Go_xifti$data[2])
-vertex_subcort_data <- unlist(CR_minus_Go_xifti$data[3])
+vertex_lh_data <- unlist(CUE_AVG_xifti$data[1])
+vertex_rh_data <- unlist(CUE_AVG_xifti$data[2])
+vertex_subcort_data <- unlist(CUE_AVG_xifti$data[3])
 
 ## Set vertex-wise threshold
-v_thresh <- 4.94 
+v_thresh <- 6.896376 
 
-## Threshold xifti data using abs(z) < 4.94
-new_xii <- CR_minus_Go_xifti
+## Threshold xifti data using abs(z) < v_thresh
+new_xii <- CUE_AVG_xifti
 str(new_xii$data)
 
 # left hemisphere
@@ -51,9 +50,11 @@ new_xii$data[[3]] <-new_subcort_data
 
 ## Confirm that xifti format was preserved
 is.xifti(new_xii)
+#view_cifti_surface(new_xii)
+#view_cifti_volume(new_xii)
 
 ## Define output directory for new cifti file
-out_dir <- "/ncf/hcp/data/analyses/myelin/fmri_test/data"
+out_dir <- "group_level_vwise/GUESSING/CUE_AVG"
 
 ## Export new xifti file
 ciftiTools::write_xifti(
@@ -67,25 +68,32 @@ ciftiTools::write_xifti(
 #############################################################################
 
 ## Define i/o
-input_cifti <- "/ncf/hcp/data/analyses/myelin/fmri_test/data/swe_dpx_zTstat_c01_thresh.dtseries.nii"
-output_cifti <- "/ncf/hcp/data/analyses/myelin/fmri_test/data/swe_dpx_zTstat_c01_thresh_nonzero_count.ptseries.nii"
-label_file <- "/ncf/hcp/data/analyses/myelin/parcellations/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dlabel.nii"
+input_cifti <- file.path(out_dir, "swe_dpx_zTstat_c01_thresh.dtseries.nii")
+output_cifti <- file.path(out_dir, "swe_dpx_zTstat_c01_thresh_nonzero_count.ptseries.nii")
+label_file <- "first_level/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dlabel.nii"
 
 ## Workbench command to create parcellated cifti counting # nonzero vertices
-system(paste0("module load connectome-workbench/1.3.2-fasrc01; wb_command -cifti-parcellate ", input_cifti, " ", label_file, " ", "COLUMN ", output_cifti, " -method COUNT_NONZERO"))
+ciftiTools::run_wb_cmd(
+  paste0("-cifti-parcellate ", 
+         input_cifti, " ", 
+         label_file, " ", 
+         "COLUMN ", 
+         output_cifti, 
+         " -method COUNT_NONZERO"))
+
 
 ## Convert cifti to text
-text_output <- "/ncf/hcp/data/analyses/myelin/fmri_test/data/swe_dpx_zTstat_c01_thresh_nonzero_count.ptseries.txt"
-system(paste0("module load connectome-workbench/1.3.2-fasrc01; wb_command -cifti-convert -to-text ", output_cifti, " ", text_output))
+text_output <- file.path(out_dir, "swe_dpx_zTstat_c01_thresh_nonzero_count.ptseries.txt")
+ciftiTools::run_wb_cmd(
+  paste0("-cifti-convert -to-text ", output_cifti, " ", text_output))
 
 ###########################################################
 ## Calculate Parcel Size for Cole-Anticevic parcellation ##
 ###########################################################
-detach("package:ciftiTools", unload=TRUE)
 library(cifti)
 
 ## Read in dlabel file for parcellation
-coleAnt_network_dlabel_cifti <- read_cifti("/ncf/hcp/data/analyses/myelin/parcellations/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dlabel.nii", trans_data = FALSE)
+coleAnt_network_dlabel_cifti <- cifti::read_cifti(label_file, trans_data = FALSE)
 cifti_data <- coleAnt_network_dlabel_cifti$data
 
 lookup_table <-coleAnt_network_dlabel_cifti$NamedMap$look_up_table
@@ -94,11 +102,9 @@ lookup_table <- as.data.frame(lookup_table)
 ## Define parcel names using cifti lookup table
 parcel_names <- lookup_table$Label[2:719]
 parcel_df <- as.data.frame(parcel_names)
-parcel_df$parcel_names
 
 cortical_lookup_table <- lookup_table[2:361,]
 subcortical_lookup_table <- lookup_table[362:719,]
-head(subcortical_lookup_table)
 subcort_parcel_index <- unique(subcortical_lookup_table$Key)
 
 ##################################### 
@@ -122,7 +128,8 @@ length(which(subcortical_parcel_size <= 4))
 ##################################
 
 ## Use a parcellated time-series (.ptseries) file to determine cortical parcel size ##
-coleAnt_cope_cifti <- read_cifti("/ncf/hcp/data/HCD-tfMRI-MultiRunFix/HCD0001305_V1_MR/MNINonLinear/Results/tfMRI_CARIT_AP/tfMRI_CARIT_AP_hp200_s4_level1_hp0_clean_ColeAnticevic.feat/ParcellatedStats/cope4.ptseries.nii", trans_data = FALSE)
+coleAnt_cope_cifti <- cifti::read_cifti(
+  "/ncf/hcp/data/HCD-tfMRI-MultiRunFix/HCD0001305_V1_MR/MNINonLinear/Results/tfMRI_GUESSING_AP/tfMRI_GUESSING_AP_hp200_s4_level1_hp0_clean_ColeAnticevic.feat/ParcellatedStats/cope1.ptseries.nii", trans_data = FALSE)
 parcel_list <- coleAnt_cope_cifti$Parcel
 cortical_parcel_size <- rep(NA, length(parcel_list))
 
@@ -142,7 +149,7 @@ hist(cortical_parcel_size, col="slategray3")
 
 ## Nonzero count of vertices with significant activation within each parcel
 ## (this text file was generated in line 79 above)
-nonzero_count <- read.table("/ncf/hcp/data/analyses/myelin/fmri_test/data/swe_dpx_zTstat_c01_thresh_nonzero_count.ptseries.txt")
+nonzero_count <- read.table(text_output)
 
 parcel_df$parcel_number <- as.factor(1:length(parcel_df$parcel_names))
 parcel_df$parcel_size <- 0
@@ -158,17 +165,19 @@ parcel_df$percentage <- unlist((parcel_df$nonzero_count / parcel_df$parcel_size)
 idx <- which(parcel_df$percentage >=50)
 parcel_df$sig_idx[idx] <- 1 
 
-View(parcel_df)
+# View(parcel_df)
 
 ## Export data
-write.csv(parcel_df, "/ncf/hcp/data/analyses/myelin/fmri_test/data/ColeAnticevic_CR-Go_parcel_inclusion.csv", row.names=FALSE)
-write.table(parcel_df$sig_idx, "/ncf/hcp/data/analyses/myelin/fmri_test/data/ColeAnticevic_CR-Go_parcel_inclusion_sig_index.txt", row.names=FALSE, col.names=FALSE)
+write.csv(parcel_df, file.path(out_dir, "ColeAnticevic_parcel-inclusion.csv"), row.names=FALSE)
+write.table(parcel_df$sig_idx, file.path(out_dir, "ColeAnticevic_parcel-inclusion_sig_index.txt"), row.names=FALSE, col.names=FALSE)
 
 
 ## Function to write CIFTI using a vector of parcel values
 write_cifti <- function(template_path, brainVar_path, cifti_output_path) {
   
-  system(paste0("module load connectome-workbench/1.3.2-fasrc01; ", "wb_command -cifti-convert -from-text ", brainVar_path, " ", template_path, " ", cifti_output_path))
+  ciftiTools::run_wb_cmd(
+    paste0("-cifti-convert -from-text ", brainVar_path, " ", template_path, " ", cifti_output_path))
+  
   return(print(cifti_output_path))
 }
 

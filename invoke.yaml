@@ -18,4 +18,21 @@ R_cmd_roi_model: "roi_model.R"
 R_cmd_collect_results: "collect_results.R"
 R_cmd_make_guessing_vwise: "guessing_make_group_model.R"
 R_cmd_make_carit_vwise: "carit_make_group_model.R"
-
+vwise_group_outdir_GUESSING: "/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING"
+GUESSING_simple_contrast_list:
+    - TASK
+    - CUE_AVG
+    - CUE_HIGH
+    - CUE_LOW
+    - GUESS
+    - FEEDBACK_AVG
+    - FEEDBACK_AVG_WIN
+    - FEEDBACK_AVG_LOSE
+    - FEEDBACK_AVG_WIN-LOSE
+    - FEEDBACK_HIGH_WIN
+    - FEEDBACK_HIGH_LOSE
+    - FEEDBACK_LOW_WIN
+    - FEEDBACK_LOW_LOSE
+    - FEEDBACK_HIGH-LOW_WIN
+    - FEEDBACK_HIGH-LOW_LOSE
+    - FEEDBACK-CUE_AVG
