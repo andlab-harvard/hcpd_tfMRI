@@ -272,3 +272,106 @@ plot_sankey <- function(df, title, breaks = c(TRUE, FALSE), labels = c('Excluded
   plot_layout(guides = 'collect')) + 
   plot_layout(design = 'AA\nBC\nEE')
 
+
+# Age model exclusion criteria
+library(brms)
+
+
+qc_combined_demos_l_model <- qc_combined_demos_l[, c('subject', 'redcap_event', 'DB_SeriesDesc', 'event_age',
+                                                     'variable', 'value')]
+age_qc_model_d <- dcast(qc_combined_demos_l_model[!is.na(variable)], ... ~ variable)
+age_qc_model_d[, PctBrainCoverage_bin := round(PctBrainCoverage*100)]
+age_qc_model_d[, PctBrainCoverage_trials := 100*100]
+
+## pctbrain
+age_qc_bcovrg_form <- bf(PctBrainCoverage_bin | trials(PctBrainCoverage_trials) ~ 
+                           1 + redcap_event + DB_SeriesDesc + 
+                           s(event_age, k = 3) + 
+                           (1 | subject),
+                         family = binomial)
+age_qc_bcovrg_priors_def <- get_prior(age_qc_bcovrg_form, data = age_qc_model_d)
+age_qc_bcovrg_priors <- c(prior('normal(0, .25)', class = 'b'),
+                          prior('student_t(3, .5, .5)', class = 'Intercept'),
+                          prior('student_t(3, 0, .5)', class = 'sds'),
+                          prior('student_t(3, 0, .5)', class = 'sd'))
+age_qc_bcovrg_fit_ponly <- brm(age_qc_bcovrg_form, prior = age_qc_bcovrg_priors,
+                               data = age_qc_model_d,
+                               cores = 4, chains = 4, warmup = 100, iter = 500,
+                               backend = 'cmdstanr', file = 'qc/age_qc_bcovrg_ponly', file_refit = 'never', 
+                               silent = 0, sample_prior = 'only')
+
+age_qc_bcovrg_pp <- posterior_predict(age_qc_bcovrg_fit_ponly, newdata = age_qc_model_d, allow_new_levels = TRUE)
+hist(age_qc_bcovrg_pp)
+plot(age_qc_bcovrg_fit_ponly, ask = FALSE)
+plot(conditional_effects(age_qc_bcovrg_fit_ponly), ask = FALSE)
+
+age_qc_bcovrg_fit <- brm(age_qc_bcovrg_form, prior = age_qc_bcovrg_priors,
+                         data = age_qc_model_d,
+                         cores = 4, chains = 4, warmup = 1000, iter = 2000,
+                         backend = 'cmdstanr', file = 'qc/age_qc_bcovrg', file_refit = 'never', 
+                         silent = 0, sample_prior = TRUE)
+age_qc_bcovrg_ceffs <- conditional_effects(age_qc_bcovrg_fit, effects = 'event_age',
+                                           conditions = data.frame(PctBrainCoverage_trials = 100*100))
+
+ggplot(age_qc_bcovrg_ceffs$event_age,
+       aes(x = event_age, y = estimate__/10000)) + 
+  # geom_point(data = age_qc_model_d, aes(y = PctBrainCoverage_bin/10000), alpha = .2) + 
+  geom_hex(data = age_qc_model_d, aes(y = PctBrainCoverage_bin/10000), binwidth = c(2, .001)) + 
+  geom_ribbon(aes(ymax = upper__/10000, ymin = lower__/10000), fill = 'blue', alpha = .8) + 
+  geom_line(color = 'darkblue') +
+  scale_color_gradient(high = '#aaaaaa99', low = '#f9f9f999', aesthetics = c('color', 'fill'))+
+  coord_trans(y = 'log10', ylim = c(.99, 1)) + 
+  theme_minimal()
+
+## tsnr
+par(mfcol = c(1,2))
+hist(age_qc_model_d$tSNR)
+plot(x <- seq(0,35,length.out = 100), dweibull(x, shape = 5, scale = 23), type = 'l')
+hist(exp(rnorm(1e6, mean = log(5), sd = .25)))
+hist((rnorm(1e6, mean = log(5), sd = .25)))
+hist(exp(rnorm(1e6, mean = log(23), sd = .25)))
+hist((rnorm(1e6, mean = log(23), sd = .25)))
+par(mfcol = c(1,1))
+age_qc_tsnr_form <- bf(tSNR ~ 1 + 
+                        1 + redcap_event + DB_SeriesDesc + 
+                        s(event_age, k = 3) + 
+                         (1 | subject),
+                       shape ~ 1,
+                       family = brms::weibull())
+age_qc_tsnr_priors_def <- get_prior(age_qc_tsnr_form, data = age_qc_model_d)
+age_qc_tsnr_priors <- c(set_prior('normal(0, .25)', class = 'b'),
+                        set_prior(sprintf('student_t(3, %0.2f, .25)', log(23)), class = 'Intercept'),
+                        set_prior(sprintf('student_t(3, %0.2f, .25)', log(5)), class = 'Intercept', dpar = 'shape'),
+                        set_prior('student_t(3, 0, .1)', class = 'sd'),
+                        set_prior('student_t(3, 0, .1)', class = 'sds'))
+age_qc_tsnr_fit_ponly <- brm(age_qc_tsnr_form, prior = age_qc_tsnr_priors,
+                             data = age_qc_model_d,
+                             cores = 4, chains = 4, warmup = 100, iter = 500,
+                             backend = 'cmdstanr', file = 'qc/age_qc_tsnr_ponly', file_refit = 'never', 
+                             silent = 0, sample_prior = 'only')
+
+age_qc_tsnr_pp <- posterior_predict(age_qc_tsnr_fit_ponly, newdata = age_qc_model_d, allow_new_levels = TRUE)
+ggplot(data.frame(x = as.vector(age_qc_tsnr_pp)), aes(x = x)) + geom_histogram(bins = 500) + coord_cartesian(xlim = c(0,100))
+plot(age_qc_tsnr_fit_ponly, ask = FALSE)
+plot(conditional_effects(age_qc_tsnr_fit_ponly), ask = FALSE)
+
+age_qc_tsnr_fit <- brm(age_qc_tsnr_form, prior = age_qc_tsnr_priors,
+                         data = age_qc_model_d,
+                         cores = 4, chains = 4, warmup = 1500, iter = 2500, threads = 2,
+                         backend = 'cmdstanr', file = 'qc/age_qc_tsnr', file_refit = 'never', 
+                         silent = 0, sample_prior = TRUE,
+                       control = list(adapt_delta = .8, max_treedepth = 10))
+summary(age_qc_tsnr_fit)
+
+age_qc_tsnr_ceffs <- conditional_effects(age_qc_tsnr_fit, effects = 'event_age')
+plot(conditional_effects(age_qc_tsnr_fit), ask = FALSE)
+pp_check(age_qc_tsnr_fit)
+ggplot(age_qc_tsnr_ceffs$event_age,
+       aes(x = event_age, y = estimate__)) + 
+  # geom_point(data = age_qc_model_d, aes(y = PctBrainCoverage_bin/10000), alpha = .2) + 
+  geom_hex(data = age_qc_model_d, aes(y = tSNR)) + 
+  geom_ribbon(aes(ymax = upper__, ymin = lower__), fill = 'blue', alpha = .8) + 
+  geom_line(color = 'darkblue') +
+  scale_color_gradient(high = '#90909099', low = '#f9f9f999', aesthetics = c('color', 'fill'))+
+  theme_minimal()
+
