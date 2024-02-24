@@ -21,6 +21,22 @@ This file contains the tasks for the HCPD task-based fMRI analysis pipeline. Som
 
 """
 
+def ascii_histogram(data):
+        # Count the frequency of each item in data
+        frequency = {}
+        for item in data:
+            frequency[item] = frequency.get(item, 0) + 1
+
+        # Find the maximum item width for alignment
+        parcel_label = 'Parcels per cluster'
+        max_item_width = max([max(len(str(item)) for item in frequency), len(parcel_label)])
+
+        # Generate and print the histogram
+        print(f"{parcel_label.rjust(max_item_width)} : Number of clusters")
+        for item, count in sorted(frequency.items()):
+            print(f"{str(item).rjust(max_item_width)} : {'█' * count}")
+
+
 
 class HCPDDataDoer:
     class DatabaseManager:
@@ -585,6 +601,7 @@ data_type IS 'Parcellated'
             
     def shutdown(self):
         pass    
+
 @task
 def clean(c, task: str, targetdir: str = "/ncf/hcp/data/HCD-tfMRI-MultiRunFix/", hcdsession: str = None):
     """
@@ -788,9 +805,8 @@ EOF
         datadoer.logger.info(f"{sbatch_result.stdout}\n{sbatch_result.stderr}")
     datadoer.shutdown()
 
-
 @task
-def make_cluster_maps(c, task, contrast=None, surfaces_dir="group_level_vwise/surface", z: float=6.896376, mm2=100, mm3=125, test=False):
+def make_cluster_maps(c, task, contrast=None, surfaces_dir="group_level_vwise/surface", z: float=6.896376, mm2=100, mm3=125388248, test=False):
     datadoer = HCPDDataDoer(c, no_db = True)
 
     if task == "GUESSING":
@@ -876,6 +892,59 @@ def cifti_thresh(c, cifti_file, cifti_dir, surfaces_dir="group_level_vwise/surfa
                         raise FileNotFoundError(f"Failed to create {cifti_out}")
                 except Exception as e:
                     datadoer.logger.error(f"Could not make cluster threshold map: {e}.")
+
+@task
+def make_cluster_parcel_csv(c, task, contrast=None):
+    datadoer = HCPDDataDoer(c, no_db = True)
+
+    if task == "GUESSING":
+        GUESSING_simple_contrast_list = c.GUESSING_simple_contrast_list
+        if contrast is not None:
+            GUESSING_simple_contrast_list = [x for x in GUESSING_simple_contrast_list if x == contrast]
+        for contrast_list_item in GUESSING_simple_contrast_list:
+            d_contrast = contrast_list_item.replace('-', '_')
+            datadoer.logger.info(f"Processing contrast: {d_contrast}")
+            cifti_file = "swe_dpx_zTstat_c01_clust.dtseries.nii" #specifically, the file where clusters have been defined
+            cifti_dir = os.path.join("group_level_vwise", "GUESSING", d_contrast)
+            cifti_full_path = os.path.join(cifti_dir, cifti_file)
+            if not os.path.exists(cifti_full_path):
+                datadoer.datadoer.logger.error(f"{cifti_full_path} not found")
+                raise ValueError(f"{cifti_full_path} not found. Did you run `invoke make_cluster_maps` for this task?")
+            datadoer.logger.info(f"Creating csv file for {cifti_file}")
+            create_parcel_cluster_assignment_csv(c, cluster_cifti_fn=cifti_full_path, logger=datadoer.logger)
+
+def create_parcel_cluster_assignment_csv(c, cluster_cifti_fn, logger):
+    parcel_numbers = pd.read_csv('group_level_vwise/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dlabel.txt', header=None, names=['parcel'])
+    parcel_labels = pd.read_csv('group_level_roi/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR_LabelKey.txt',
+                               sep = '\t')
+
+    cluster_cifti_base_fn = re.match(r'(.*)\.nii$', cluster_cifti_fn).group(1)
+    cluster_cifti_txt_fn =  f"{cluster_cifti_base_fn}.txt"
+    cluster_parcel_fn = f"{cluster_cifti_base_fn}.csv"
+
+    wb_cmd = f"wb_command -cifti-convert -to-text {cluster_cifti_fn} {cluster_cifti_txt_fn}"
+    logger.info(f"Running {wb_cmd}")
+    with c.prefix(f"module load {c.connectomewb_mod}"):
+        c.run(wb_cmd)
+
+    cluster_assignment = pd.read_csv(cluster_cifti_txt_fn, header=None, names=['cluster'])
+
+    cluster_parcels = pd.concat([parcel_numbers, cluster_assignment], axis=1)
+    cluster_parcels_count = cluster_parcels.groupby(['parcel', 'cluster']).size().reset_index(name='counts')
+    cluster_parcels_count['total'] = cluster_parcels_count.groupby(['parcel'])['counts'].transform('sum')
+    cluster_parcels_count['prop'] = cluster_parcels_count['counts'] / cluster_parcels_count['total']
+    nclusts = cluster_parcels_count.groupby('parcel')['parcel'].transform('size') >3
+    n_multiclust_parcels = cluster_parcels_count[(nclusts > 2) & (cluster_parcels_count['cluster'] != 0) & (cluster_parcels_count['prop'] > .5)].shape[0]
+
+    print(f"Total parcels: {len(cluster_parcels_count[cluster_parcels_count.cluster != 0].parcel.unique())}")
+    print(f"Total clusters: {len(cluster_parcels_count[cluster_parcels_count.cluster != 0].cluster.unique())}")
+    print(f"Total parcels with overlapping clusters: {sum(cluster_parcels_count[cluster_parcels_count.cluster != 0].prop > .5)}")
+    ascii_histogram(cluster_parcels_count[cluster_parcels_count.cluster != 0].groupby('cluster').size())
+
+    cluster_parcels_count_labeled=pd.merge(parcel_labels, cluster_parcels_count, left_on='KEYVALUE', right_on='parcel')
+
+    logger.info(f"Writing cluster parcel counts to {cluster_parcel_fn}")
+    cluster_parcels_count_labeled.to_csv(cluster_parcel_fn)
 
 @task
 def fit_kfold(c, model, test=False, testprop=.0125, refit=False, nfolds=5, long=False, onlylong=False):
@@ -1254,6 +1323,6 @@ EOF
 
 # Define a collection of tasks
 ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, make_cluster_maps, fit_behavior_model, fit_kfold,
-                collect_roi_model_results, run_roi_models, make_vwise_group_model)
+                collect_roi_model_results, run_roi_models, make_vwise_group_model, make_cluster_parcel_csv)
 # Configure the collection with logging settings
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})
