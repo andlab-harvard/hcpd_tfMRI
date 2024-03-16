@@ -10,6 +10,8 @@ import numpy as np
 import pyarrow.feather as feather
 from invoke import task, Collection
 from multiprocessing import Process, Manager, cpu_count
+import time
+import random
 
 """
 This file contains the tasks for the HCPD task-based fMRI analysis pipeline. Some tasks depend on other tasks! The rough order can be found below:
@@ -1088,8 +1090,6 @@ def collect_roi_model_results(c, clean: bool=False, test: bool=False):
     # Instantiate HCPDDataDoer without database access
     datadoer = HCPDDataDoer(c, no_db = True)
 
-    
-
     # Format the R command for the specified model
     r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_collect_results])
 
@@ -1321,8 +1321,49 @@ EOF
             job_number = re.match(r'Submitted batch job (\d+)', sbatch_result.stdout)
             datadoer.logger.info(f"Sbatch job: {job_number[1]}")
 
+@task(iterable=['contrast'])
+def make_vwise_cluster_plot(c, task: str, contrast, all: bool=False, test: bool=False):
+    datadoer = HCPDDataDoer(c, no_db = True)
+
+    if all:
+        e = "'all' not implemented yet. Please specify contrasts to plot"
+        datadoer.logger.error(e)
+        raise ValueError(e)
+
+    contrast_list = getattr(c, f"{task}_simple_contrast_list")
+    group_dir = getattr(c, f"vwise_group_outdir_{task}")
+    clust_parcel_info_csv = getattr(c, "clust_parcel_info_csv")
+    
+
+    for this_contrast in contrast:
+        # Format the R command for the specified model
+        clust_parcel_info_path = os.path.join(group_dir, this_contrast.replace('-', '_'), clust_parcel_info_csv)
+
+        r_cmd = ' '.join([c.sbatch_cmd_R_container, c.R_cmd_make_vwise_cluster_plots, f"--task {task} --contrast {this_contrast} --clust_csv {clust_parcel_info_path}"])
+
+        # Set SLURM job parameters
+        NCPU = "1"
+        reserved_mem = "4G"
+        time_limit = "0-02:00"
+        sbatch_template = f"""
+#!/bin/bash
+#SBATCH -c {NCPU}
+#SBATCH --mem={reserved_mem}
+#SBATCH -t {time_limit}
+{c.sbatch_header}
+{r_cmd}
+EOF
+"""
+        datadoer.logger.info(f"Creating plots: {r_cmd}")
+        cmd = f"sbatch <<EOF {sbatch_template}"
+        
+        datadoer.logger.debug(f"Command:\n\n{cmd}")
+        if not test:
+            c.run(cmd)
+
+
 # Define a collection of tasks
 ns = Collection(clean, build_first, extract_parcellated, combine_parcellated_data, make_cluster_maps, fit_behavior_model, fit_kfold,
-                collect_roi_model_results, run_roi_models, make_vwise_group_model, make_cluster_parcel_csv)
+                collect_roi_model_results, run_roi_models, make_vwise_group_model, make_cluster_parcel_csv, make_vwise_cluster_plot)
 # Configure the collection with logging settings
 ns.configure({'log_level': "INFO", 'log_file': "invoke.log"})

@@ -18,6 +18,7 @@ R_cmd_roi_model: "roi_model.R"
 R_cmd_collect_results: "collect_results.R"
 R_cmd_make_guessing_vwise: "guessing_make_group_model.R"
 R_cmd_make_carit_vwise: "carit_make_group_model.R"
+R_cmd_make_vwise_cluster_plots: "make_vwise_cluster_plots.R"
 vwise_group_outdir_GUESSING: "/ncf/mclaughlin/users/jflournoy/code/hcpd_tfMRI/group_level_vwise/GUESSING"
 GUESSING_simple_contrast_list:
     - TASK
@@ -37,3 +38,4 @@ GUESSING_simple_contrast_list:
     - FEEDBACK_HIGH-LOW_LOSE
     - FEEDBACK-CUE_AVG
 connectomewb_mod: "ncf/1.0.0-fasrc01 connectome_workbench/1.5.0-centos6_x64-ncf"
+clust_parcel_info_csv: "swe_dpx_zTstat_c01_clust.dtseries.csv"
